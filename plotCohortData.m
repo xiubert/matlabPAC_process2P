@@ -103,7 +103,7 @@ figure('Name',[strrep(params.cohort,'combined',strcat(BW,'kHz'))...
 b = bar(u,'FaceColor',params.colors.ratio(1,:),'EdgeColor','none');
 hold on
 errorbar(u,sem,'k-','LineWidth',1.5,'LineStyle','none')
-modPlotForPoster(1);
+ModPlotForPaper(true);
 ylabelLowHighPkRespRatio(params.colors);
 xticklabels(string(unique(Tplot.PTsOnset)))
 xlabel('DRC duration preceding pure tone (s)')
@@ -177,7 +177,7 @@ if plotBoxplot==0
     ylabel('% \DeltaF/F')
     % xlim([-1.2 max(tDRC)])
     xlim([-1.2 8])
-    modPlotForPoster(0)
+    ModPlotForPaper()
     
     subplot(2,1,2) %signal
     [sigPTcontrastHi,fs] = inspectSignalObject('plot',false,'signalPath',...
@@ -203,7 +203,7 @@ if plotBoxplot==0
         strjoin(['lohi' strrep(regexp(treatment,...
         strjoin({'pre','post'},'|'),'match'),'p','P')],''))(2,:);
     set(gca,'yticklabel',[]);
-    modPlotForPoster(0);
+    ModPlotForPaper();
     xlabel('time (s)');
     ax = gca;
     ax.YAxis.TickLength = [0 0];
@@ -246,6 +246,7 @@ if plotBoxplot==1
         'PlotStyle','compact','Colors',params.colors.ratio(1,:))
     % set(gca,'xtick',[]);
     % h=gca; h.XAxis.TickLength = [0 0];
+    ModPlotForPaper()
     lowStr = strjoin(arrayfun(@(x) num2str(x),params.colors.(strjoin(['lohi' strrep(regexp(treatment,...
         strjoin({'pre','post'},'|'),'match'),'p','P')],''))(1,:),'UniformOutput',false),',');
     highStr = strjoin(arrayfun(@(x) num2str(x),params.colors.(strjoin(['lohi' strrep(regexp(treatment,...
@@ -253,7 +254,6 @@ if plotBoxplot==1
     set(gca,'xtick',1:2,...
         'xticklabel',{['\color[rgb]{' lowStr '} LOW'],...
         ['\color[rgb]{' highStr '} HIGH']})
-    modPlotForPoster(0)
     ylabel('mean % \DeltaF/F')
     
     a = get(get(gca,'children'),'children');   % Get the handles of all the objects
@@ -325,21 +325,22 @@ if normBool~=1
 end
 
 %pk resp scatter
-[hScatter, hRegLine, hRegLineCI, mdl, ciRegLine, hRef] = ...
-    regPlot(lo.*100,...
+mdl = regPlot(lo.*100,...
     hi.*100,...
     'regLine',true,...
     'logScale',false,...
     'intercept',false,...
+    'refLine',true,...
+    'squareAxis',true,...
     'colors',regPlotColors,...
     'fName',[strrep(params.cohort,'combined',strcat(BW,'kHz'))...
     '_PTresp_scatter_re_contrast_re_' treatment]);
-xlabel({'peak pure tone % \DeltaF/F','in low contrast'},...
+ModPlotForPaper();
+xlabel({'low contrast','peak % \DeltaF/F'},...
     'Color',params.colors.lohiPre(1,:),'interpreter', 'tex')
-ylabel({'peak pure tone % \DeltaF/F','in high contrast'},...
+ylabel({'high contrast','peak % \DeltaF/F'},...
     'Color',params.colors.lohiPre(2,:),'interpreter', 'tex')
 legend('off')
-modPlotForPoster(0);
 if figSave
     figSaveAsFigEpsPng(gcf);
 end
@@ -375,7 +376,7 @@ fillSEMplot(tDFF,uTrace(idC==30,:),semTrace(idC==30,:),...
 xlim([1.5 3.5])
 % xlim([0 2]) for 0.5s onset
 
-modPlotForPoster(0)
+ModPlotForPaper()
 xlabel('time (s)')
 ylabel('% \DeltaF/F')
 if figSave
@@ -434,7 +435,7 @@ figure('Name',[params.cohort '_PTresp_ratio_re_DRCbandwidth']);
 boxplot(vertcat(ratioBW{:}),vertcat(tmp{:}),...
     'PlotStyle','compact','Colors',params.colors.ratio(1,:));
 hold on
-modPlotForPoster(1)
+ModPlotForPaper(true)
 xlabel({'','DRC bandwidth (kHz)'})
 set(gca,'xtick',1:length(BW),...
         'xticklabel',BW)
@@ -483,7 +484,7 @@ figure('name',[params.cohort '_PTresp_ratio_re_BF-PToctDif']);
 boxplot(vertcat(pkReOct{:}),vertcat(tmp{:}),...
     'PlotStyle','compact','Colors',params.colors.ratio(1,:));
 hold on
-modPlotForPoster(1)
+ModPlotForPaper(true)
 xlabel({'','octave of cell BF'})
 set(gca,'xtick',1:2,...
         'xticklabel',{'within','outside'})
@@ -553,7 +554,7 @@ if plotBoxplot~=1
         strjoin({'pre','post'},'|'),'match'),'p','P')],''))(2,:));
     ylabel('% \DeltaF/F')
     xlim([-1.2 8])
-    modPlotForPoster(0)
+    ModPlotForPaper()
     
     subplot(2,1,2) %signal
     [sigPTcontrastHi,fs] = inspectSignalObject('plot',false,'signalPath',...
@@ -578,7 +579,7 @@ if plotBoxplot~=1
         strjoin(['lohi' strrep(regexp(treatment,...
         strjoin({'pre','post'},'|'),'match'),'p','P')],''))(2,:);
     set(gca,'yticklabel',[]);
-    modPlotForPoster(0);
+    ModPlotForPaper();
     xlabel('time (s)');
     ax = gca;
     ax.YAxis.TickLength = [0 0];
@@ -616,7 +617,7 @@ if plotBoxplot==1
     tmpG = arrayfun(@(r) ones(length(uDFF_DRCsustained_cell{r}),1).*r,[1 2],'uni',0);
     boxplot(vertcat(uDFF_DRCsustained_cell{:}).*100,vertcat(tmpG{:}),...
         'PlotStyle','compact','Colors',params.colors.ratio(1,:))
-    modPlotForPoster(0)
+    ModPlotForPaper()
     ylabel('mean % \DeltaF/F')
     % h=gca; h.XAxis.TickLength = [0 0];
     a = get(get(gca,'children'),'children');   % Get the handles of all the objects
@@ -707,6 +708,7 @@ b(1).CData = params.colors.lohiPre;
 b(2).CData = params.colors.lohiPost;
 hold on
 groupBarPlotErrorBar(u,sem);
+ModPlotForPaper()
 lowStr = strjoin(arrayfun(@(x) num2str(x),params.colors.lohiPre(1,:),'UniformOutput',false),',');
 highStr = strjoin(arrayfun(@(x) num2str(x),params.colors.lohiPre(2,:),'UniformOutput',false),',');
 
@@ -721,7 +723,6 @@ text(2+b(1).XOffset,2.5,'CTRL',...
     'Rotation',90,'Color','w','FontWeight','bold','FontSize',16)
 text(2+(-1.*(b(1).XOffset)),2.5,strrep(prepost{1},'pre',''),...
     'Rotation',90,'Color','w','FontWeight','bold','FontSize',16)
-modPlotForPoster(0)
 set(gca,'Position',[0.2000 0.100 0.6000 0.7150])
 if figSave
     figSaveAsFigEpsPng(gcf);
@@ -743,15 +744,20 @@ for ppID = 1:length(pp)
         regPlotColors(2,:) = [0.6510    0.6510    0.6510];
     end
     
-    [~, ~, ~, mdl] = regPlot(lo.*100,...
+    mdl = regPlot(lo.*100,...
         hi.*100,...
+        'regLine',true,...
+        'logScale',false,...
+        'intercept',false,...
+        'refLine',true,...
+        'squareAxis',true,...
         'fName',[params.cohort '_PTresp_scatter_' pp{ppID} '_' DRUG '_re_contrast'],...
-        'colors',regPlotColors,'logScale',false,'regLine',true);
-    xlabel({'peak pure tone % \DeltaF/F','in low contrast'},...
+        'colors',regPlotColors);
+    ModPlotForPaper();
+    xlabel({'low contrast','peak % \DeltaF/F'},...
         'Color',params.colors.(['lohi' strrep(pp{ppID},'p','P')])(1,:),'interpreter', 'tex')
-    ylabel({'peak pure tone % \DeltaF/F','in high contrast'},...
+    ylabel({'high contrast','peak % \DeltaF/F'},...
         'Color',params.colors.(['lohi' strrep(pp{ppID},'p','P')])(2,:),'interpreter', 'tex')
-    modPlotForPoster(0);
     fprintf('lo>hi %d | hi>lo %d | total %d \n',...
         sum((lo>hi)),sum((hi>lo)),sum(all(~isnan([lo hi]),2)));
     [hLOHI,pLOHI,normBool] = sigDiffCalc(lo,hi);
@@ -784,8 +790,8 @@ end
 for cID = 1:length(lh)
     clear pre post
     if statsDrugByContrast{double(statsDrugByContrast.Contrast)==cID,'pValue'}(1)<0.05
-        regPlotColors(1,:) = params.colors.lohiPre(cID,:);
-        regPlotColors(2,:) = params.colors.lohiTracePre(cID,:);
+        regPlotColors(1,:) = params.colors.(['lohi' strrep(pp{ppID},'p','P')])(cID,:);
+        regPlotColors(2,:) = params.colors.(['lohiTrace' strrep(pp{ppID},'p','P')])(cID,:);
     else
         regPlotColors(1,:) = [0,0,0];
         regPlotColors(2,:) = [0.6510    0.6510    0.6510];
@@ -795,15 +801,22 @@ for cID = 1:length(lh)
     post = tmpT{contains(tmpT.idT,'post') & ...
         eval(['tmpT.idC==' mm{cID} '(tmpT.idC)']),'uPkPT'}{:};
     
-    [~, ~, ~, mdl] = regPlot(pre.*100,...
+    mdl = regPlot(pre.*100,...
         post.*100,...
+        'regLine',true,...
+        'logScale',false,...
+        'intercept',false,...
+        'refLine',true,...
+        'squareAxis',true,...
         'fName',[params.cohort '_PTresp_scatter_' upper(lh{cID}) '_contrast_re_' DRUG],...
-        'colors',regPlotColors,'logScale',false,'regLine',true);
-    xlabel({'peak pure tone % \DeltaF/F',['in ' lh{cID} ' contrast']},...
-        'Color',params.colors.lohiPre(cID,:),'interpreter', 'tex');
-    ylabel({'peak pure tone % \DeltaF/F',['in ' lh{cID} ' contrast']},...
-        'Color',params.colors.lohiPost(cID,:),'interpreter', 'tex');
-    modPlotForPoster(0);       
+        'colors',regPlotColors);
+    ModPlotForPaper();       
+    xlabel('CTRL',...
+        'Color',params.colors.lohiPre(cID,:),...
+        'FontWeight','bold','interpreter', 'tex');
+    ylabel(DRUG,...
+        'Color',params.colors.lohiPost(cID,:),...
+        'FontWeight','bold','interpreter', 'tex');
     if figSave
         figSaveAsFigEpsPng(gcf);
     end
@@ -847,8 +860,8 @@ b.CData = params.colors.ratio;
 hold on
 errorbar(u,sem,...
     'k-','LineWidth',1.5,'LineStyle','none')
+ModPlotForPaper(true)
 hLabel = ylabelLowHighPkRespRatio(params.colors);
-modPlotForPoster(1)
 xticklabels('')
 if figSave
     figSaveAsFigEpsPng(gcf);
@@ -902,7 +915,7 @@ for ppID = 1:length(pp)
     end
     yl(ppID,:) = ylim;
     xlim([1.5 3.5])
-    modPlotForPoster(0)
+    ModPlotForPaper()
 xlabel('time (s)')
 ylabel('% \DeltaF/F')
 end
@@ -955,7 +968,7 @@ hold on
 fillSEMplot(tDRCoff,cellU(idC2==30,:),...
     cellSEM(idC2==30,:),params.colors.lohiPre(2,:),...
     params.colors.lohiTracePre(2,:));
-modPlotForPoster(0)
+ModPlotForPaper()
 xlabel('time (s)')
 ylabel('% \DeltaF/F')
 xlim([7 10])
@@ -985,7 +998,7 @@ hLine(2).Color = params.colors.(...
     strjoin(['lohi' strrep(regexp(treatment,...
     strjoin({'pre','post'},'|'),'match'),'p','P')],''))(2,:);
 set(gca,'yticklabel',[]);
-modPlotForPoster(0);
+ModPlotForPaper();
 xlabel('time (s)');
 if figSave
     figSaveAsFigEpsPng(gcf);
@@ -1020,7 +1033,7 @@ figure('Name',[params.cohort '_DRCoffset_boxplot_re_' treatment]);
 tmpG = arrayfun(@(r) ones(length(cellTraceBin{r}),1).*r,[1 2],'uni',0);
 boxplot(vertcat(cellTraceBin{:}).*100,vertcat(tmpG{:}),...
     'PlotStyle','compact','Colors',params.colors.ratio(1,:))
-modPlotForPoster(0)
+ModPlotForPaper()
 ylabel('mean % \DeltaF/F')
 
 a = get(get(gca,'children'),'children');   % Get the handles of all the objects
@@ -1091,7 +1104,7 @@ fillSEMplot(tDFFdrc,u(1,:),SEM(1,:),...
 hold on
 fillSEMplot(tDFFdrc,u(2,:),SEM(2,:),...
     params.colors.lohiPre(1,:),params.colors.lohiTracePre(1,:));
-modPlotForPoster(0)
+ModPlotForPaper()
 xlabel('time (s)')
 ylabel('% \DeltaF/F')
 xlim([9 14])
@@ -1116,7 +1129,7 @@ ax = gca;
 ax.YAxis.TickLength = [0 0];
 xL(2) = xline(10);
 xL(2).LineWidth = 2;
-modPlotForPoster(0);
+ModPlotForPaper();
 xlim([9 14])
 xlabel('time (s)')
 set(gcf,'Position',[287 302.5000 674 455])
@@ -1150,8 +1163,7 @@ figure('Name',sprintf('CaMKII_contrastChange_boxplot_epoch_%.1f-%.1fs_re_pre',tD
 tmpG = arrayfun(@(r) ones(length(uDRCchangeEpoch{r}),1).*r,[1 2],'uni',0);
 boxplot(vertcat(uDRCchangeEpoch{:}),vertcat(tmpG{:}),...
     'PlotStyle','compact','Colors',params.colors.ratio(1,:))
-h=gca; h.XAxis.TickLength = [0 0];
-modPlotForPoster(0)
+ModPlotForPaper()
 ylabel('mean % \DeltaF/F')
 a = get(get(gca,'children'),'children');   % Get the handles of all the objects
 set(a(9),'Color',params.colors.lohiPre(2,:))
@@ -1260,8 +1272,8 @@ b.CData = params.colors.ratio;
 hold on
 errorbar(u,sem,...
     'k-','LineWidth',1.5,'LineStyle','none')
+ModPlotForPaper(true)
 hLabel = ylabelLowHighPkRespRatio(params.colors);
-modPlotForPoster(1)
 xticklabels('')
 if figSave
     figSaveAsFigEpsPng(gcf);
@@ -1288,7 +1300,7 @@ end
 figure('Name',['CaMKII_BFshift_re_' DRUG]);
 dBF = Tinput{contains(Tinput.treatment,'pre'),{'dBFprepost'}};
 histogram(dBF,'EdgeColor','none','FaceColor',params.colors.ratio(1,:),'HandleVisibility','off')
-modPlotForPoster(0)
+ModPlotForPaper()
 xlabel({'BF octave shift from control','upon ZX1 injection'})
 ylabel('cell count')
 hold on
@@ -1366,8 +1378,8 @@ b.CData = params.colors.ratio;
 hold on
 errorbar(u,sem,...
     'k-','LineWidth',1.5,'LineStyle','none')
+ModPlotForPaper(true)
 hLabel = ylabelLowHighPkRespRatio(params.colors);
-modPlotForPoster(1)
 xticklabels('')
 if figSave
     figSaveAsFigEpsPng(gcf);
@@ -1423,14 +1435,16 @@ end
 lo = uPkCell{idC==10};
 hi = uPkCell{idC==30};
 %pk resp scatter
-[hScatter, hRegLine, hRegLineCI, mdl, ciRegLine, hRef] = ...
-    regPlot(lo.*100,...
+mdl = regPlot(lo.*100,...
     hi.*100,...
     'regLine',true,...
     'logScale',false,...
     'intercept',false,...
+    'refLine',true,...
+    'squareAxis',true,...
     'colors',regPlotColors,...
     'fName',[params.cohort '_PTresp_scatter_re_contrast_re_' treatment]);
+ModPlotForPaper();
 xlabel({'low contrast','peak % \DeltaF/F'},...
     'Color',params.colors.(strjoin(['lohi' strrep(regexp(treatment,...
     strjoin({'pre','post'},'|'),'match'),'p','P')],''))(1,:),'interpreter', 'tex')
@@ -1438,7 +1452,6 @@ ylabel({'high contrast','peak % \DeltaF/F'},...
     'Color',params.colors.(strjoin(['lohi' strrep(regexp(treatment,...
     strjoin({'pre','post'},'|'),'match'),'p','P')],''))(2,:),'interpreter', 'tex')
 legend('off')
-modPlotForPoster(0);
 if figSave
     figSaveAsFigEpsPng(gcf);
 end
@@ -1487,7 +1500,7 @@ fillSEMplot(tDFF,uTrace(idC==30,:),semTrace(idC==30,:),...
     params.colors.(strjoin(['lohiTrace' strrep(regexp(treatment,...
     strjoin({'pre','post'},'|'),'match'),'p','P')],''))(idC==30,:));
 xlim([1.5 3.5])
-modPlotForPoster(0)
+ModPlotForPaper()
 xlabel('time (s)')
 ylabel('% \DeltaF/F')
 if figSave
@@ -1553,7 +1566,7 @@ if plotBoxplot ~= 1
         strjoin({'pre','post'},'|'),'match'),'p','P')],''))(2,:));
     ylabel('% \DeltaF/F')
     xlim([-1.2 8])
-    modPlotForPoster(0)
+    ModPlotForPaper()
     
     subplot(2,1,2) %signal
     [sigPTcontrastHi,fs] = inspectSignalObject('plot',false,'signalPath',...
@@ -1578,7 +1591,7 @@ if plotBoxplot ~= 1
         strjoin(['lohi' strrep(regexp(treatment,...
         strjoin({'pre','post'},'|'),'match'),'p','P')],''))(2,:);
     set(gca,'yticklabel',[]);
-    modPlotForPoster(0);
+    ModPlotForPaper();
     xlabel('time (s)');
     ax = gca;
     ax.YAxis.TickLength = [0 0];
@@ -1615,9 +1628,8 @@ if plotBoxplot == 1
     tmpG = arrayfun(@(r) ones(length(uDFF_DRCsustained_cell{r}),1).*r,[1 2],'uni',0);
     boxplot(vertcat(uDFF_DRCsustained_cell{:}).*100,vertcat(tmpG{:}),...
         'PlotStyle','compact','Colors',params.colors.ratio(1,:))
-    modPlotForPoster(0)
+    ModPlotForPaper()
     ylabel('mean % \DeltaF/F')
-    h=gca; h.XAxis.TickLength = [0 0];
     a = get(get(gca,'children'),'children');   % Get the handles of all the objects
     set(a(9),'Color',params.colors.(strjoin(['lohi' strrep(regexp(treatment,...
         strjoin({'pre','post'},'|'),'match'),'p','P')],''))(2,:))
