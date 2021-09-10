@@ -96,7 +96,7 @@ if plotROIid ~= 0
     c.Label.FontSize = 16;
     c.Box = 'off';
     c.LineWidth = 2;
-    modPlotForPoster(0);
+    modPlotForPaper(false);
     title(sprintf('ROI: %d | BFuDB: %d Hz',plotROIid,FRA.BFuDB(plotROIid)),...
         'FontSize',10,'FontWeight','normal')
 end
