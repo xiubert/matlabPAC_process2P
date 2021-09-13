@@ -11,6 +11,9 @@ function SEM = SEMcalc(data,varargin)
 switch nargin
     case 1
         dimension = 1;
+        if isvector(data) && size(data,2)>1
+            data = data(:);
+        end
     case 2
         dimension = varargin{1};
 end
