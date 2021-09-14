@@ -1,4 +1,4 @@
-function [mdl, ciRegLine, hFig, hScatter, hRegLine, hRegLineCI, hRef] = regPlot(X,Y,varargin)
+function [mdl, ciRegLine, hScatter, hRegLineCI, hRegLine, hRef, hFig] = regPlot(X,Y,varargin)
 
 p = inputParser;
 addRequired(p, 'X', @isnumeric);
@@ -46,9 +46,9 @@ if isempty(g.Children) || ~strcmp(fName,'scatter plot with regression line and C
 end
 
 if length(sigID)>1
-    hScatter = gscatter(X,Y,sigID,'kk','o.');
+    hScatter = gscatter(X,Y,sigID,'kk','o.','HandleVisibility','off');
 else
-    hScatter = scatter(X,Y,'k','o');
+    hScatter = scatter(X,Y,'k','o','HandleVisibility','off');
 end
 if squareAxis
     xlim(round([min([xlim ylim]) max([xlim ylim])]))
@@ -56,7 +56,7 @@ if squareAxis
 end
 hold on
 if refLine
-    hRef = refline(mRefLine,bRefLine);
+    hRef = refline(mRefLine,bRefLine,'HandleVisibility','off');
     hRef.LineStyle = '--';
     % hRef.Color = colors.ratio(1,:);
     hRef.Color = 'r';
