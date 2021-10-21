@@ -63,9 +63,17 @@ if refLine
     hRef.LineWidth = 2;
 end
 if min([xlim ylim])>0
-    xRegLine = linspace(min([xlim ylim]),max([xlim ylim]),1000);
+    if squareAxis
+        xRegLine = linspace(min([xlim ylim]),max([xlim ylim]),1000);
+    else
+        xRegLine = linspace(min(xlim),max(xlim),1000);
+    end
 else
-    xRegLine = linspace(0,max([xlim ylim]),1000);
+    if squareAxis
+        xRegLine = linspace(0,max([xlim ylim]),1000);
+    else
+        xRegLine = linspace(0,max(xlim),1000);
+    end
 end
 % yRegLine = xRegLine.*mdl.Coefficients.Estimate;
 [yRegLine,ciRegLine] = predict(mdl,xRegLine(:));
