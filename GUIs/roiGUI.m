@@ -176,30 +176,32 @@ ui.roiGUI.freehand1 = uicontrol(ui.roiGUI.bg,'Style','radiobutton',...
     'Position',[0.211428571428571,0.231709432451245,0.8707,0.1997]);
 
 %Channel Selection if 'Merge'
-ui.roiGUI.chanSel = uicontrol('Parent',ui.roiGUI.fh,'Style', 'text',...
-    'String','Channel:','Units','Normalized',...
-    'Position',[0.0481245,0.58,0.0915,0.0228]);
+if isfield(sROI,'imgMultChan')
+    ui.roiGUI.chanSel = uicontrol('Parent',ui.roiGUI.fh,'Style', 'text',...
+        'String','Channel:','Units','Normalized',...
+        'Position',[0.0481245,0.58,0.0915,0.0228]);
+    
+    ui.roiGUI.chanSelBG = uibuttongroup('Parent',ui.roiGUI.fh,...
+        'Visible','on',...
+        'Position',[0.036792452830188,0.491304347826087,0.109433962264151,0.0914],...
+        'SelectionChangedFcn',@channelSelection);
 
-ui.roiGUI.chanSelBG = uibuttongroup('Parent',ui.roiGUI.fh,...
-    'Visible','on',...
-    'Position',[0.036792452830188,0.491304347826087,0.109433962264151,0.0914],...
-    'SelectionChangedFcn',@channelSelection);
 
-% Create two radio buttons in the button group.
-ui.roiGUI.merge = uicontrol(ui.roiGUI.chanSelBG,'Style',...
-    'radiobutton',...
-    'String','merge',...
-    'Units','Normalized',...
-    'Position',[0.1164,0.7,0.870699999999998,0.1997]);
-ui.roiGUI.chan1 = uicontrol(ui.roiGUI.chanSelBG,'Style','radiobutton',...
-    'String','ch. 1 (red)',...
-    'Units','Normalized',...
-    'Position',[0.1164,0.45,0.870699999999998,0.1997]);
-ui.roiGUI.chan2 = uicontrol(ui.roiGUI.chanSelBG,'Style','radiobutton',...
-    'String','ch. 2 (green)',...
-    'Units','Normalized',...
-    'Position',[0.1164,0.20,0.870699999999998,0.1997]);
-
+    % Create two radio buttons in the button group.
+    ui.roiGUI.merge = uicontrol(ui.roiGUI.chanSelBG,'Style',...
+        'radiobutton',...
+        'String','merge',...
+        'Units','Normalized',...
+        'Position',[0.1164,0.7,0.870699999999998,0.1997]);
+    ui.roiGUI.chan1 = uicontrol(ui.roiGUI.chanSelBG,'Style','radiobutton',...
+        'String','ch. 1 (red)',...
+        'Units','Normalized',...
+        'Position',[0.1164,0.45,0.870699999999998,0.1997]);
+    ui.roiGUI.chan2 = uicontrol(ui.roiGUI.chanSelBG,'Style','radiobutton',...
+        'String','ch. 2 (green)',...
+        'Units','Normalized',...
+        'Position',[0.1164,0.20,0.870699999999998,0.1997]);
+end
 %tif file in title
 ui.roiGUI.title = uicontrol('Parent',ui.roiGUI.fh,'Style','text',...
     'String', sROI.file,...
@@ -518,7 +520,7 @@ ui.roiGUI.bg.Visible = 'on';
         %determine previous file number
         fileNo = str2double(string(regexprep(regexp(sROI.file,'[A-Z]{4}\d{4}','match'),'[A-Z]{4}','')));
         prevFileNo = fileNo-1;
-        prevfileNoStr = num2fourDigitStrL(prevFileNo);
+        prevfileNoStr = sprintf('%04d', prevFileNo);
         
         tIDX = regexp(sROI.file,'[A-Z]{4}\d{4}');
         prevFileName = [sROI.file(1:tIDX+3) prevfileNoStr '.tif'];
@@ -761,17 +763,24 @@ ui.roiGUI.bg.Visible = 'on';
         hPre = findall(0,'type','figure');
         
         %determine next file name
-        fileNo = str2double(string(regexprep(regexp(sROI.file,'[A-Z]{4}\d{4}','match'),'\D{4}','')));
-        nextFileNo = fileNo+1;
-        nextfileNoStr = num2fourDigitStrL(nextFileNo);
-        tIDX = regexp(sROI.file,'[A-Z]{4}\d{4}');
-        nextFileName = [sROI.file(1:tIDX+3) nextfileNoStr '.tif'];
+        % Capture the 5-digit group you want to increment
+        tok = regexp(sROI.file, '[A-Z]{2}\d{4}[A-Z]{4}_(\d{5}).*\.tif$', 'tokens', 'once');
+        if isempty(tok)
+            error('Pattern not found in filename.');
+        end
         
+        nextFileNo = str2double(tok{1}) + 1;
+        nextGroup = sprintf('%05d', nextFileNo);  % keep 5 digits; use %04d if 4 digits needed
+        % Replace only that captured occurrence using regexprep with a function
+        nextFileName = regexprep(sROI.file, '([A-Z]{2}\d{4}[A-Z]{4}_)(\d{5})(.*\.tif$)', ...
+            ['$1' nextGroup '$3']);
         while nextFileNo<9999 && exist(nextFileName,'file')~=2
             nextFileNo = nextFileNo-1;
-        end
-        nextfileNoStr = num2fourDigitStrL(nextFileNo);
-        nextFileName = [sROI.file(1:tIDX+3) nextfileNoStr '.tif'];
+        end  
+        nextGroup = sprintf('%05d', nextFileNo);  % keep 5 digits; use %04d if 4 digits needed
+        % Replace only that captured occurrence using regexprep with a function
+        nextFileName = regexprep(sROI.file, '([A-Z]{2}\d{4}[A-Z]{4}_)(\d{5})(.*\.tif$)', ...
+            ['$1' nextGroup '$3']);
         
         %close current ROI gui figure and other figures
         close(hPre)
@@ -788,18 +797,25 @@ ui.roiGUI.bg.Visible = 'on';
         hPre = findall(0,'type','figure');
         
         %determine previous file name
-        fileNo = str2double(string(regexprep(regexp(sROI.file,'[A-Z]{4}\d{4}','match'),'\D{4}','')));
-        prevFileNo = fileNo-1;
-        prevfileNoStr = num2fourDigitStrL(prevFileNo);
-        tIDX = regexp(sROI.file,'[A-Z]{4}\d{4}');
-        
-        prevFileName = [sROI.file(1:tIDX+3) prevfileNoStr '.tif'];
-        
+        % Capture the 5-digit group you want to increment
+        tok = regexp(sROI.file, '[A-Z]{2}\d{4}[A-Z]{4}_(\d{5}).*\.tif$', 'tokens', 'once');
+        if isempty(tok)
+            error('Pattern not found in filename.');
+        end
+
+        prevFileNo = str2double(tok{1}) - 1;
+        prevGroup = sprintf('%05d', prevFileNo);  % keep 5 digits; use %04d if 4 digits needed
+        % Replace only that captured occurrence using regexprep with a function
+        prevFileName = regexprep(sROI.file, '([A-Z]{2}\d{4}[A-Z]{4}_)(\d{5})(.*\.tif$)', ...
+            ['$1' prevGroup '$3']);
+               
         while prevFileNo>0 && exist(prevFileName,'file')~=2
             prevFileNo = prevFileNo-1;
         end
-        prevfileNoStr = num2fourDigitStrL(prevFileNo);
-        prevFileName = [sROI.file(1:tIDX+3) prevfileNoStr '.tif'];
+        prevGroup = sprintf('%05d', prevFileNo);  % keep 5 digits; use %04d if 4 digits needed
+        % Replace only that captured occurrence using regexprep with a function
+        prevFileName = regexprep(sROI.file, '([A-Z]{2}\d{4}[A-Z]{4}_)(\d{5})(.*\.tif$)', ...
+            ['$1' prevGroup '$3']);
         
         %close current ROI gui figure and other figures
         close(hPre)
@@ -902,10 +918,11 @@ ui.roiGUI.bg.Visible = 'on';
             ui.outputFigs.meanROIoutput.ax1.YLim = [0 size(sROI.img,1)];
             axis(ui.outputFigs.meanROIoutput.ax1,'square')
             
-            plot(ui.outputFigs.meanROIoutput.ax3,sROI.t,sROI.rawFroi(plotROIidx,:))
-            xlabel(ui.outputFigs.meanROIoutput.ax3,'Time (s)')
-            ylabel(ui.outputFigs.meanROIoutput.ax3,'Raw Average Pixel Intensity')
-            clickableLegend(ui.outputFigs.meanROIoutput.ax3,savedROIs);
+            hLines = plot(ui.outputFigs.meanROIoutput.ax3, sROI.t, sROI.rawFroi(plotROIidx,:));
+            xlabel(ui.outputFigs.meanROIoutput.ax3, 'Time (s)')
+            ylabel(ui.outputFigs.meanROIoutput.ax3, 'Raw Average Pixel Intensity')
+            % clickableLegend(hLines, savedROIs); 
+            legend(hLines, savedROIs);
             lgd = findobj(gcf,'Type','Legend');
             lgd.Position(1:2) = [0.91 0.1];
             
@@ -1079,20 +1096,6 @@ ui.roiGUI.bg.Visible = 'on';
     end %save output callbk
 
 %%%%%%%%%%%%%%% ADDITIONAL HELPER FUNCTIONS %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-    function fourDigitStr = num2fourDigitStrL(numInput)
-        nDigits = numel(num2str(numInput));
-        switch nDigits
-            case 1
-                tStr = ['000' num2str(numInput)];
-            case 2
-                tStr = ['00' num2str(numInput)];
-            case 3
-                tStr = ['0' num2str(numInput)];
-            case 4
-                tStr = num2str(numInput);
-        end
-        fourDigitStr = tStr;
-    end
 
 %mark deleted ROI
     function roiStruct = markDeletedROI(roiStruct)
