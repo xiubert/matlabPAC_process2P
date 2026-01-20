@@ -2,7 +2,7 @@
 clearvars; close all; clc;
 %use roiGUI to output fluo2p for first tif file
 %%%%%%%%%%%%%%%%%%%%%%%%%% EDIT IF NEEDED %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-pkPTsigSD = 1.5;
+pkPTsigSD = 2;
 nFramesPostPulse = 2;
 plotAllROI = true;
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
