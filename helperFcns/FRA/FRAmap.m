@@ -108,10 +108,14 @@ for pulseN = 1:length(PTfreq)
     tPTrel(:,pulseN) = tAbsTracePulse(PTonsetIDX(pulseN)-(maxFramesBeforeOnset-1):PTonsetIDX(pulseN)+maxFramesAfterOnset,pulseN);
     
     dFF = dFoFcalc(F(:,:,pulseN),[1 PTonsetIDX(pulseN)],1);
-    [sigPkDff(:,pulseN),~,peakDFF(:,pulseN)] = ...        
+    [sigPkDff_tmp,sig_tmp,peakDFF(:,pulseN),~,~] = ...        
         pkFcalc(dFF,PTonsetIDX(pulseN),...
         msPTpulseLen(pulseN)/1000*fs+nFramesPostPulse,pkPTsigSD);
-    
+    sigPkDff(sig_tmp,pulseN) = sigPkDff_tmp;
+%     [sigPkDff(:,pulseN),~,peakDFF(:,pulseN),~,~] = ...        
+%         pkFcalc(dFF,PTonsetIDX(pulseN),...
+%         msPTpulseLen(pulseN)/1000*fs+nFramesPostPulse,pkPTsigSD);
+%     
     rawFptRel(:,:,pulseN) = F(:,PTonsetIDX(pulseN)-(maxFramesBeforeOnset-1):PTonsetIDX(pulseN)+maxFramesAfterOnset,pulseN);
     dFFptRel(:,:,pulseN) = dFF(:,PTonsetIDX(pulseN)-(maxFramesBeforeOnset-1):PTonsetIDX(pulseN)+maxFramesAfterOnset);
     clear dFF sig
