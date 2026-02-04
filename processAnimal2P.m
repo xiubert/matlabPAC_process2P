@@ -5,7 +5,7 @@ clearvars;close all;clc;
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%  EDIT HERE  %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-dataPath = 'C:\Data\sampleData\AA0211';
+dataPath = 'C:\Users\JIC402\OneDrive - University of Pittsburgh\Data\AA0036\Region1';
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%  DONE  %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -146,7 +146,7 @@ save(fullfile(dataPath,'NoRMCorred',[animal '_NoRMCorreParams.mat']),'NoRMCorreP
 
 %% In case of REDO or RESUME after motion correction:
 % RUN THIS IF RUNNING AGAIN FOR A DIFFERENT CELL TYPE
-%{
+
 load(fullfile(dataPath,[animal '_tifCondSplitLegend.mat']),'tifList')
 load(fullfile(dataPath,[animal '_tifFileLegend.mat']),'tifFiles')
 % FRAmapIDX = contains({tifFiles.treatment},'map')';
@@ -164,7 +164,7 @@ for k = 1:length(moCorN)
     rawCatImg.(moCorN{k}) = rawCattemp - min(rawCattemp(:));
     clear rawCattemp
 end
-%}
+
 
 %% FOR EACH treatment condition (pre/post): 
 %1. RUN THIS CELL to Draw ROI from motion corrected concatenated stack
@@ -315,6 +315,123 @@ save(fullfile(dataPath,[animal '_tifFileList.mat']),...
 
 % eg. tifFileList.map.SCALEDfissaFroi is in shape ROI x fluoresence 
 % at corresponding .tif frame
+%% REDO AFTER GETTING tifFileList.map.SCALEDfissaFroi
+
+if ~exist('dataPath','var')
+    dataPath='C:\Users\JIC402\OneDrive - University of Pittsburgh\Data\CaMKII_combined\AA0034';
+    animal = regexp(dataPath,'[A-Z]{2}\d{4}','match','once');
+    
+end
+% [pulseLegend2P,stimGroupIDX,ROIoutputTables] = stimParam2ROI(dataPath);
+%% 
+%FRAmap
+%%%%%%%%%%%%%%%%%%%%%%%%%% EDIT IF NEEDED %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+pkPTsigSD = 2;
+nFramesPostPulse = 2;
+plotAllROI = true;
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+MapOutputDir = fullfile(dataPath,'BFMap');
+
+if ~isfolder(MapOutputDir)
+    mkdir(MapOutputDir)
+end
+
+load(fullfile(dataPath,[animal '_tifFileList.mat']))
+%% 
+
+adHocFRAmap = FRAmap(tifFileList,pkPTsigSD,...
+    nFramesPostPulse,'SCALEDfissaFroi');
+
+%% PLOT OUTPUT | Sig Responses
+
+plotFRAmap(adHocFRAmap,'plotAllROI',plotAllROI)
+
+figure;semilogx(adHocFRAmap.freqList,nanmean(adHocFRAmap.uSigPkResp,1))
+[~, maxID] = max(nanmean(adHocFRAmap.uSigPkResp,1));
+
+
+disp(adHocFRAmap.freqList(maxID))
+
+%% PLOT OUTPUT | All Responses
+
+plotFRAmap(adHocFRAmap,'sigResp',false,'plotAllROI',plotAllROI)
+
+figure;semilogx(adHocFRAmap.freqList,nanmean(adHocFRAmap.uPkResp,1))
+xlabel('Frequency/Hz')
+ylabel('dF/F')
+[~, maxID] = max(nanmean(adHocFRAmap.uPkResp,1));
+disp(adHocFRAmap.freqList(maxID))
+
+%% PLOT RESP to CGC
+if ~exist('nCell','var')
+    nCell=size(tifFileList.stim(1).rawFroi,1);
+end
+nMeasurement=length(tifFileList.stim);
+% F_high=cell(nCell,4)
+% F_low=cell(nCell,4)
+% for i = 1:nCell
+%     F_high{i,1} =tifFileList.stim(1).SCALEDfissaFroi(i,:);
+%     F_high{i,2} =tifFileList.stim(5).SCALEDfissaFroi(i,:);
+%     F_high{i,3} =tifFileList.stim(6).SCALEDfissaFroi(i,:);
+%     F_high{i,4} =tifFileList.stim(7).SCALEDfissaFroi(i,:);
+%     F_low{i,1} =tifFileList.stim(2).SCALEDfissaFroi(i,:);
+%     F_low{i,2} =tifFileList.stim(3).SCALEDfissaFroi(i,:);
+%     F_low{i,3} =tifFileList.stim(4).SCALEDfissaFroi(i,:);
+%     F_low{i,4} =tifFileList.stim(8).SCALEDfissaFroi(i,:);
+% end
+
+F_high_avg=(tifFileList.stim(1).SCALEDfissaFroi+tifFileList.stim(5).SCALEDfissaFroi+tifFileList.stim(6).SCALEDfissaFroi+tifFileList.stim(7).SCALEDfissaFroi)/4;
+F_low_avg=(tifFileList.stim(2).SCALEDfissaFroi+tifFileList.stim(3).SCALEDfissaFroi+tifFileList.stim(4).SCALEDfissaFroi+tifFileList.stim(8).SCALEDfissaFroi)/4;
+time_vector=(1:75)/5-4;
+% figure;
+% plot(time_vector,F_high_avg(3,:))
+% hold on;
+% plot(time_vector,F_low_avg(3,:))
+% xlabel('time')
+% legend('High contrast', 'Low contrast')
+ROIperFig = 9;
+remROIplotNo = rem(nCell,ROIperFig);
+roiFigNo = floor(nCell/ROIperFig)+(remROIplotNo>=1);
+m=1;
+%initialize subplots for multiple ROI per fig
+for roiFigN = 1:roiFigNo
+    FRAfigs.ROIpkDelFoFcPlot(roiFigN).FH = figure('Name',...
+        'peak dF/F responses and BFuDB for each ROI','Position',...
+        [312 73 1304 934]);
+
+    for roiSubPlotN = 1:ROIperFig
+        curROIno = roiFigN*ROIperFig - ROIperFig + roiSubPlotN;
+        if curROIno <= nCell
+            subplot(3,3,roiSubPlotN);
+            p1=plot(time_vector,F_high_avg(m,:))
+            hold on;
+            p2=plot(time_vector,F_low_avg(m,:))
+            xlabel('time/s')
+           
+            xline(2,'--')
+            hold off;
+            title('ROI'+string(m));
+            legend('High contrast', 'Low contrast','pure tone')
+            m=m+1
+        end
+        clear curROIno
+    end
+    clear roiSubPlotN
+end
+% for i=1:nCell
+%     figure;
+%     plot(time_vector,F_high_avg(i,:))
+%     hold on;
+%     plot(time_vector,F_low_avg(i,:))
+%     xlabel('time')
+%     legend('High contrast', 'Low contrast')
+%     title('ROI'+string(i));
+% end
+
+% tBaseDRC = [-1.2 0];
+% tBasePT{2} = [1 2];
+%% 
 
 %see stimParam2ROI.m if have stim params in _Pulses.mat files
 [pulseLegend2P,stimGroupIDX,ROIoutputTables] = stimParam2ROI(dataPath);

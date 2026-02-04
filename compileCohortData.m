@@ -5,11 +5,11 @@ clearvars;close all;clc;
 %%%%%%%%%%%%%%%%%%%%%%%%%%%  EDIT HERE  %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 cohortName = 'CaMKII';
-outputTableSaveDir = 'D:\Data\';
-params.parentPath = 'D:\Data\CaMKII_combined';
+outputTableSaveDir = 'C:\Users\JIC402\OneDrive - University of Pittsburgh\Data';
+params.parentPath = 'C:\Users\JIC402\OneDrive - University of Pittsburgh\Data\CaMKII_combined';
 
 params.tableDir = '.';
-params.treatment = 'pre';
+params.treatment = 'none';
 params.pkPTsigSD = 2;
 params.nFramesPostPulse = 2;
 

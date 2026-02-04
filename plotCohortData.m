@@ -9,7 +9,7 @@ load('D:\Data\CaMKII_params.mat')
 %% dFF
 % %{
 clc; clearvars -except Tinput params
-params.permIters = 100000;
+params.permIters = 100000; 
 tBaseDRC = [-1.2 0];
 tBasePT{1} = [0.2 0.5];
 tBasePT{2} = [1 2];
