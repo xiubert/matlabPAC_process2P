@@ -4,10 +4,10 @@ clearvars; close all; clc;
 %%%%%%%%%%%%%%%%%%%%%%%%%% EDIT IF NEEDED %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 pkPTsigSD = 2;
 nFramesPostPulse = 2;
-plotAllROI = 1;
+plotAllROI = true;
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-dataPath = uigetdir('D:');
+dataPath = uigetdir('C:');
 adhocMapOutputDir = fullfile(dataPath,'adHocMap');
 
 if ~isfolder(adhocMapOutputDir)
@@ -66,12 +66,19 @@ end
 adHocFRAmap = FRAmap(tifFileList,pkPTsigSD,...
     nFramesPostPulse,'rawFroi');
 
-%% PLOT OUTPUT
+%% PLOT OUTPUT | Sig Responses
 
 plotFRAmap(adHocFRAmap,'plotAllROI',plotAllROI)
 
 figure;semilogx(adHocFRAmap.freqList,nanmean(adHocFRAmap.uSigPkResp,1))
 [~, maxID] = max(nanmean(adHocFRAmap.uSigPkResp,1));
+[~, maxID] = max(nanmean(adHocFRAmap.uPkResp,1));
+
 disp(adHocFRAmap.freqList(maxID))
 
+%% PLOT OUTPUT | All Responses
 
+plotFRAmap(adHocFRAmap,'sigResp',false)
+
+figure;semilogx(adHocFRAmap.freqList,nanmean(adHocFRAmap.uPkResp,1))
+[~, maxID] = max(nanmean(adHocFRAmap.uPkResp,1));
