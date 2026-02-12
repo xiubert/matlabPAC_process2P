@@ -3,8 +3,8 @@
 %% LOAD DATA
 clearvars;close all;clc;
 
-load('D:\Data\CaMKII_dataTable.mat')
-load('D:\Data\CaMKII_params.mat')
+load('C:\Users\JIC402\OneDrive - University of Pittsburgh\Data\CaMKII_combined\CaMKII_dataTable.mat')
+load('C:\Users\JIC402\OneDrive - University of Pittsburgh\Data\CaMKII_combined\CaMKII_params.mat')
 
 %% dFF
 % %{
