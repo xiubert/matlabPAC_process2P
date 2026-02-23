@@ -109,8 +109,7 @@ if plotAllROI==1
     %initialize subplots for multiple ROI per fig
     for roiFigN = 1:roiFigNo
         FRAfigs.ROIpkDelFoFcPlot(roiFigN).FH = figure('Name',...
-            'peak dF/F responses and BFuDB for each ROI','Position',...
-            [312 73 1304 934]);
+            'peak dF/F responses and BFuDB for each ROI','Position');
         
         for roiSubPlotN = 1:ROIperFig
             curROIno = roiFigN*ROIperFig - ROIperFig + roiSubPlotN;
