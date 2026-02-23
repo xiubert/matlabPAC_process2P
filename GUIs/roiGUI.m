@@ -678,7 +678,6 @@ ui.roiGUI.bg.Visible = 'on';
                     ID = delROIids(roiN);
                     delIDX = find(strcmp(ID,allROI));
                     sROI.roi(delIDX).object.delete;
-                    sROI.roi(delIDX).label.delete;
                     sROI.roi(delIDX).deleted = true;
                 end
                 clear roiN
