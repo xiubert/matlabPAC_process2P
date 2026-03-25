@@ -5,7 +5,7 @@ clearvars;close all;clc;
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%  EDIT HERE  %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-dataPath = 'C:\Users\JIC402\OneDrive - University of Pittsburgh\Data\AA0044';
+dataPath = 'C:\Users\JIC402\OneDrive - University of Pittsburgh\Data\AA0051\2P';
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%  DONE  %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -54,6 +54,16 @@ clear FRAmapSelIDX
 if any(FRAmapIDX)
     treatment(FRAmapIDX) = cellfun(@(c) horzcat(c,' FRAmap'),treatment(FRAmapIDX),'uni',0);
 end
+%%%%
+BPNIDX = false(length(tifFiles),1);
+BPNSelIDX = listdlg('PromptString',{'Select tif files for BPN','(cancel if none)'},...
+    'ListString',{tifFiles.name}','SelectionMode','multiple');
+BPNIDX(BPNSelIDX) = true;
+clear BPNSelIDX
+if any(BPNIDX)
+    treatment(BPNIDX) = cellfun(@(c) horzcat(c,' BPN'),treatment(BPNIDX),'uni',0);
+end
+%%%%
 [tifFiles.treatment] = treatment{:};
 
 save(fullfile(dataPath,[animal '_tifFileLegend.mat']),'tifFiles')
@@ -250,8 +260,11 @@ FISSAoutput = load(fullfile(dataPath,'NoRMCorred','FISSAoutput','matlab.mat'));
 if ~exist('FRAmapIDX')
     FRAmapIDX = contains({tifFiles.treatment}','map');
 end
+if ~exist('BPNIDX')
+    BPNIDX = contains({tifFiles.treatment}','BPN');
+end
 
-if any(FRAmapIDX)
+if any(FRAmapIDX) || any(BPNIDX)
     if length(fieldnames(tifList))>1
         C = struct2cell(tifList);
         tifFiles = vertcat(C{:});
@@ -259,24 +272,29 @@ if any(FRAmapIDX)
         tifFiles = tifList.all;
     end
     tifFileList.map = tifFiles(FRAmapIDX);
-    tifFileList.stim = tifFiles(~FRAmapIDX);
+    tifFileList.BPN = tifFiles(BPNIDX);
+    tifFileList.stim = tifFiles(~FRAmapIDX & ~BPNIDX);
     
     fID = fieldnames(FISSAoutput);
     trials.all = fieldnames(FISSAoutput.raw.cell0);
     trials.BF = strcat(cellstr(repmat('trial',[sum(FRAmapIDX) 1])),cellstr(string(0:sum(FRAmapIDX)-1))');
-    trials.stim = strcat(cellstr(repmat('trial',[sum(~FRAmapIDX) 1])),cellstr(string(0:sum(~FRAmapIDX)-1))');
+    trials.BPN = strcat(cellstr(repmat('trial',[sum(BPNIDX) 1])),cellstr(string(0:sum(BPNIDX)-1))');
+    trials.stim = strcat(cellstr(repmat('trial',[sum(~FRAmapIDX & ~BPNIDX) 1])),cellstr(string(0:sum(~FRAmapIDX & ~BPNIDX)-1))');
     for nField = 1:length(fID)
         for nCell = 1:length(fieldnames(FISSAoutput.(fID{nField})))
             tmp = struct2cell(FISSAoutput.(fID{nField}).(['cell' num2str(nCell-1)]));
             FISSAout.map.(fID{nField}).(['cell' num2str(nCell-1)]) = ...
                 cell2struct(tmp(FRAmapIDX),trials.BF);
+            FISSAout.BPN.(fID{nField}).(['cell' num2str(nCell-1)]) = ...
+                cell2struct(tmp(BPNIDX),trials.BPN);
             FISSAout.stim.(fID{nField}).(['cell' num2str(nCell-1)]) = ...
-                cell2struct(tmp(~FRAmapIDX),trials.stim);
+                cell2struct(tmp(~FRAmapIDX & ~BPNIDX),trials.stim);
             clear tmp
         end
     end
     clear FISSAoutput
     FISSAoutput.map = FISSAout.map;
+    FISSAoutput.BPN = FISSAout.BPN;
     FISSAoutput.stim = FISSAout.stim;
     clear tmp FISSAout trials fID
 elseif isfield(tifList,'all')

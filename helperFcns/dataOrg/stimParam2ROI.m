@@ -21,12 +21,42 @@ pulseLegend2P = tifPulseLegend2P(dataPath);
 stimGroupIDX.ptStimIDX.pulseLegend2P = contains({pulseLegend2P.pulseSet},'PTinContrast')';
 stimGroupIDX.ptStimIDX.tifFileList = ismember({tifFileList.stim.name},...
     {pulseLegend2P(stimGroupIDX.ptStimIDX.pulseLegend2P).tif})';
+% % stimGroupIDX.BPNStimIDX.pulseLegend2P = contains({pulseLegend2P.pulseSet},'BPN')';
+% % stimGroupIDX.BPNStimIDX.tifFileList = ismember({tifFileList.stim.name},...
+% %     {pulseLegend2P(stimGroupIDX.BPNStimIDX.pulseLegend2P).tif})';
+stimGroupIDX.BPNStimIDX.tifFileList = ismember({tifFileList.BPN.name},...
+    {pulseLegend2P(stimGroupIDX.BPNStimIDX.pulseLegend2P).tif})';
+
 stimGroupIDX.contrastChangeIDX.pulseLegend2P = contains({pulseLegend2P.pulseSet},'contrastChange')';
 stimGroupIDX.contrastChangeIDX.tifFileList = ismember({tifFileList.stim.name},...
     {pulseLegend2P(stimGroupIDX.contrastChangeIDX.pulseLegend2P).tif})';
 stimGroupIDX.pupilReflexIDX.pulseLegend2P = contains({pulseLegend2P.pulseSet},'LED trigger')';
 stimGroupIDX.pupilReflexIDX.tifFileList = ismember({tifFileList.stim.name},...
     {pulseLegend2P(stimGroupIDX.pupilReflexIDX.pulseLegend2P).tif})';
+
+%BPN
+if sum(stimGroupIDX.BPNStimIDX.tifFileList)>1
+    
+    % get stim params for each tif
+    tifStimParamTable = stimParams2TifTable(...
+        tifFileList.stim(stimGroupIDX.BPNStimIDX.tifFileList),dataPath);
+    
+    % sort ROIs by stim params
+    [anmlROIbyStim,stimTable] = anmlROIbyStimTable(animal,...
+        tifFileList.stim(stimGroupIDX.BPNStimIDX.tifFileList),...
+        moCorROI,...
+        tifStimParamTable);
+    outputTables{end+1} = 'tifStimParamTable';
+    outputTables{end+1} = tifStimParamTable;
+    outputTables{end+1} = 'anmlROIbyStim';
+    outputTables{end+1} = anmlROIbyStim;
+    outputTables{end+1} = 'stimTable';
+    outputTables{end+1} = stimTable;
+    
+    save(fullfile(dataPath,[animal '_anmlROI_stimTable.mat']),'anmlROIbyStim','stimTable','tifStimParamTable',...
+        'dataPath','FISSAoutput','tifFileList','fissaScaleFactor',...
+        'stimGroupIDX','pulseLegend2P','-v7.3')
+end
 
 %sort pure tone in contrast stims
 if sum(stimGroupIDX.ptStimIDX.tifFileList)>1
