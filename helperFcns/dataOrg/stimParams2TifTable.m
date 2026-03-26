@@ -28,6 +28,8 @@ if contains(tempStim.pulse.pulseset,'PTinContrast')
     stimParamExtractFcn = @extractStimParams;
 elseif contains(tempStim.pulse.pulseset,'contrastChange')
     stimParamExtractFcn = @extractContrastChangeParams;
+elseif contains(tempStim.pulse.pulseset,'BPN')
+    stimParamExtractFcn = @extractBPNStimParams;
 end
 
 % initialize table with first pulse

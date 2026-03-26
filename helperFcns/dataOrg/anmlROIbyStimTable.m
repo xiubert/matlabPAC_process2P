@@ -1,6 +1,29 @@
 function [anmlROIbyStim,stimTable] = anmlROIbyStimTable(animal,tifFileListStim,moCorROI,tifStimParamTable)
 %sort responses from all ROI for a given stim
 %into a table of animal ROIs by stim parameters
+
+% trims longer vectors to the smallest length
+
+% list of fields inside stim to equalize
+fields = {'rawFroi','moCorRawFroi','fissaFroi','SCALEDfissaFroi'};
+
+for fi = 1:numel(fields)
+    f = fields{fi};
+    % collect lengths for entries that have a non-empty numeric vector in tifFileList(k).stim.(f)
+    L = zeros(1,numel(tifFileListStim));
+    for k = 1:numel(tifFileListStim)
+        L(k) = numel(tifFileListStim(k).(f));   
+    end
+    m = min(L);  % target length (smallest)
+    % Trim each valid vector to length m
+    for k = 1:numel(tifFileListStim)
+        v = tifFileListStim(k).(f);
+        if numel(v) > m
+            tifFileListStim(k).(f) = v(1:m);
+        end
+    end
+end
+
 tifStimParamTable = tifStimParamTable(:,~contains(tifStimParamTable.Properties.VariableNames,'tif'));
 
 if isfield(tifFileListStim,'fissaFroi')
@@ -32,7 +55,7 @@ stimTable = sT;
 clear sT
 
 %begin to create table of ROIs for each stim
-TanmlROI = table(repmat(animal,[length(moCorROI) 1]),char({moCorROI.ID}),...
+TanmlROI = table(repmat(string(animal),[length(moCorROI) 1]),string({moCorROI.ID})',...
     'VariableNames',{'animal','roiID'});
 TanmlROI = repmat(TanmlROI,[size(stimTable,1) 1]);
 stimID = ones(length(moCorROI),1);

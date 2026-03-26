@@ -1,7 +1,7 @@
 %% plot
 % Inputs (set these)
-targetROI = 8;      % desired roiID
-targetdB  = 60;     % desired dB
+targetROI = 1;      % desired roiID
+targetdB  = 70;     % desired dB
 
 % Find row(s) matching the ROI and dB
 rowMask = (GroupedTbl.roiID == targetROI) & (GroupedTbl.dB == targetdB);
@@ -36,6 +36,8 @@ figure;
 hold on;
 plot(t, dffMat, 'Color', [0.7 0.7 0.9]);        % thin light lines for individual repetitions
 plot(t, dffMean, '-k', 'LineWidth', 2);         % thick black line for mean
+xline(1,'--')
+xline(1.4,'--')
 hold off;
 xlabel('Time (s)');
 ylabel('dF/F');
@@ -110,6 +112,8 @@ for k = 1:numel(dbVals)
 end
 
 % Finalize plot
+xline(1,'--')
+xline(1.4,'--')
 xlabel('Time (s)');
 ylabel('dF/F');
 title(sprintf('ROI %d: average dF/F per dB', targetROI));
