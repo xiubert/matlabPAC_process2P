@@ -56,7 +56,7 @@ clear sT
 
 %begin to create table of ROIs for each stim
 TanmlROI = table(repmat(string(animal),[length(moCorROI) 1]),string({moCorROI.ID})',...
-    'VariableNames',{'animal','roiID'});
+    'VariableNames',{'animal','roiID'});%modified since 1 roi caused error
 TanmlROI = repmat(TanmlROI,[size(stimTable,1) 1]);
 stimID = ones(length(moCorROI),1);
 roiTstim = repmat(stimTable(1,:),[length(moCorROI) 1]);

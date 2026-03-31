@@ -1,7 +1,7 @@
 %% plot
 % Inputs (set these)
-targetROI = 1;      % desired roiID
-targetdB  = 70;     % desired dB
+targetROI = 2;      % desired roiID
+targetdB  = 30;     % desired dB
 
 % Find row(s) matching the ROI and dB
 rowMask = (GroupedTbl.roiID == targetROI) & (GroupedTbl.dB == targetdB);
@@ -19,14 +19,11 @@ dffCells  = GroupedTbl.dFF{r};    % same shape
 timeMat = horzcat(timeCells{:});   % each column is one repetition
 dffMat  = horzcat(dffCells{:});
 
-% If time vectors are identical across repetitions, use the first column or build from fs
-if all(all(abs(timeMat - timeMat(:,1)) < 1e-9))
-    t = timeMat(:,1);
-else
-    % fallback: use frame index to compute time
-    m = size(dffMat,1);
-    t = (0:m-1)'/fs;
-end
+
+% use frame index to compute time
+m = size(dffMat,1);
+t = (1:m)'/fs;
+
 
 % Compute mean across repetitions (along columns)
 dffMean = mean(dffMat, 2, 'omitnan');
@@ -36,7 +33,7 @@ figure;
 hold on;
 plot(t, dffMat, 'Color', [0.7 0.7 0.9]);        % thin light lines for individual repetitions
 plot(t, dffMean, '-k', 'LineWidth', 2);         % thick black line for mean
-xline(1,'--')
+xline(1,'--','BPN')
 xline(1.4,'--')
 hold off;
 xlabel('Time (s)');
@@ -50,7 +47,7 @@ grid on;
 
 %% 
 % Inputs
-targetROI = 1;   % desired roiID
+targetROI = 2;   % desired roiID
 
 % Select rows for that ROI
 rows = find(GroupedTbl.roiID == targetROI);
@@ -63,7 +60,8 @@ dbVals = unique(GroupedTbl.dB(rows));
 
 % Prepare figure
 figure; hold on;
-colors = lines(numel(dbVals));
+cmap = jet(numel(dbVals));
+colors = cmap;
 
 for k = 1:numel(dbVals)
     db = dbVals(k);
@@ -91,7 +89,7 @@ for k = 1:numel(dbVals)
     end
 
     m = size(allDffCols,1);
-    t = (0:m-1)'/fs;
+    t = (1:m)'/fs;
 
     % Compute mean and SEM across repetitions (columns)
     mu  = mean(allDffCols, 2, 'omitnan');
@@ -112,7 +110,7 @@ for k = 1:numel(dbVals)
 end
 
 % Finalize plot
-xline(1,'--')
+xline(1,'--','BPN')
 xline(1.4,'--')
 xlabel('Time (s)');
 ylabel('dF/F');
@@ -126,10 +124,20 @@ hold off;
 
 % 1) Group and compute stats
 [G, dBvals] = findgroups(GroupedTbl.dB);      % G groups rows by dB, dBvals are group keys
-data=cell2mat(GroupedTbl.MeansigPeak);
-mu = splitapply(@mean, data, G);     % mean per dB
-n  = splitapply(@numel, data, G);    % counts per dB
-sd = splitapply(@std,  data, G);     % std per dB
+% data=cell2mat(GroupedTbl.sigPeak);
+
+c = GroupedTbl.sigPeak;        % cell array, some cells empty
+n = numel(c);
+data = NaN(n,1);
+nonEmpty = ~cellfun(@isempty, c);
+if any(nonEmpty)
+    data(nonEmpty) = cell2mat(c(nonEmpty));
+end
+
+
+mu = splitapply(@(x) mean(x,'omitnan'), data, G);     % mean per dB
+n  = splitapply(@(x) sum(~isnan(x)), data, G);    % counts per dB
+sd = splitapply(@(x) std(x,'omitnan'),  data, G);     % std per dB
 sem = sd ./ sqrt(n);                                   % SEM per dB
 
 % Sort dB values (optional) to ensure increasing x positions

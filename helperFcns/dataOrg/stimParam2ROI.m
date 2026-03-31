@@ -21,9 +21,11 @@ pulseLegend2P = tifPulseLegend2P(dataPath);
 stimGroupIDX.ptStimIDX.pulseLegend2P = contains({pulseLegend2P.pulseSet},'PTinContrast')';
 stimGroupIDX.ptStimIDX.tifFileList = ismember({tifFileList.stim.name},...
     {pulseLegend2P(stimGroupIDX.ptStimIDX.pulseLegend2P).tif})';
+%for single BPN
 stimGroupIDX.BPNStimIDX.pulseLegend2P = contains({pulseLegend2P.pulseSet},'BPN')';
 stimGroupIDX.BPNStimIDX.tifFileList = ismember({tifFileList.stim.name},...
     {pulseLegend2P(stimGroupIDX.BPNStimIDX.pulseLegend2P).tif})';
+%for BPN train
 % stimGroupIDX.BPNStimIDX.tifFileList = ismember({tifFileList.BPN.name},...
 %     {pulseLegend2P(stimGroupIDX.BPNStimIDX.pulseLegend2P).tif})';
 

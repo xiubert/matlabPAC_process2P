@@ -27,11 +27,11 @@ fqAdjIDX = zero2nan(tmp.*ismember(tmp,[1:nFreq]));
 
 %back to linear IDX
 if exist('isMATLABReleaseOlderThan','file')&&~isMATLABReleaseOlderThan("R2024a")
-    adjRespIDX = [Sub2ind([nAmpl nFreq],dBadjIDX,repmat(fqIDX,[1 3])),...
-    Sub2ind([nAmpl nFreq],repmat(dBidx,[1 2]),fqAdjIDX)];
+    adjRespIDX = [Sub2Ind([nAmpl nFreq],dBadjIDX,repmat(fqIDX,[1 3])),...
+    Sub2Ind([nAmpl nFreq],repmat(dBidx,[1 2]),fqAdjIDX)];
 else
-    adjRespIDX = [sub2Ind([nAmpl nFreq],dBadjIDX,repmat(fqIDX,[1 3])),...
-    sub2Ind([nAmpl nFreq],repmat(dBidx,[1 2]),fqAdjIDX)];
+    adjRespIDX = [sub2ind([nAmpl nFreq],dBadjIDX,repmat(fqIDX,[1 3])),...
+    sub2ind([nAmpl nFreq],repmat(dBidx,[1 2]),fqAdjIDX)];
 end
 
 nResp = sum(~isnan(adjRespIDX),2);

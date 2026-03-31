@@ -1,3 +1,6 @@
+% No longer in use. See BPN2.m
+
+
 % function [BPNoutput,BPNdBampl] = BPN(tifFileList,...
 %     pkBPNsigSD,nFramesPostPulse,varargin)
 % % BPN: output BPN for an animal.
