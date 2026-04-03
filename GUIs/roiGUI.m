@@ -1,17 +1,59 @@
 function [] = roiGUI(varargin)
-% roiGUI  Load ScanImage .tif for roi drawing.
-%   [] = readSCIMtif(varargin)
-%   loads .tif into GUI for drawing and saving ROI
+% roiGUI  Interactive ROI drawing and export for ScanImage .tif stacks.
+% 
+%   roiGUI launches a GUI to browse frames of a ScanImage .tif, draw ROIs
+%   (ellipse or freehand), view mean images, and export ROI masks and
+%   fluorescence traces.
 %
-%   Additional input arguments: 
-%       'inputFileName' --> loads specified .tif file
-%       '1' --> loads specified channel, replace with desired channel number
-%               channel id stored in imHeader
-%       'merge' --> merges image data from 2 channels, assumes red,green
+%   Usage
+%     roiGUI()                      % prompt to select a .tif file
+%     roiGUI(chanID)                % prompt to select specific channel of a .tif file via browser
+%     roiGUI('merge')               % prompt to select a .tif file and merge channels
+%     roiGUI(inputFileName)         % open specified .tif
+%     roiGUI(inputFileName, chanID) % specify channel index (numeric)
+%     roiGUI(..., 'merge')          % load all channels and show merged view
 %
-%   PAC_20200213
+%   Inputs (optional)
+%     inputFileName  char scalar    Full path or name of a ScanImage .tif.
+%     chanID         numeric scalar Channel index to load (default: 2).
+%     'merge'                     Treat file as multi-channel and enable
+%                                 merged view (assumes a two-channel red/green).
 %
-%   See also meanfluoROIvt.m
+%   Outputs / Side effects
+%     No return value. The function:
+%        - creates an interactive figure for ROI drawing and controls,
+%        - saves ROI outputs to <trace>_roiOutput.mat when "Save Output" is used,
+%        - assigns sROI to the base workspace when "Output to Workspace" is used.
+%
+%   Files created/read
+%     - Reads: <inputFileName>.tif and optional <inputFileName>_Pulses.mat or
+%              <inputFileName>_PulseParams.mat (if present).
+%     - Writes: <trace>_roiOutput.mat (or appended numbered file).
+%
+%   Dependencies
+%     Requires the following helper functions (must be on the path):
+%       readSCIMtif, redGreenMerge, dFoFcalc, extractMapPulseParams,
+%       createMaskFromROIobject, getROIstructVertices
+%     Uses Image Processing Toolbox functions: imellipse, imfreehand.
+%
+%   Notes
+%     - Default channel is 2 when a single-channel read is requested.
+%     - loadNext/loadPrev rely on a filename pattern with a zero-padded
+%       numeric group (e.g. ..._00001.tif); if the pattern is not found an
+%       error is thrown.
+%     - Deleted ROIs are tracked in the sROI.roi.deleted field; loading a
+%       ROI set restores ROI objects and labels.
+%
+%   Examples
+%     roiGUI()                                  % prompt for file
+%     roiGUI('C:\data\mouse1_00001.tif', 1)     % open ch.1 of specified file
+%     roiGUI('C:\data\scan.tif', 'merge')       % load both channels and enable merge
+%
+%   See also readSCIMtif, imellipse, imfreehand
+%
+%   Author: PAC
+%   Date: 2020-02-13
+
 
 
 %PAC_20190522 overhaul for new 2P pipeline, removed epifluorescence
