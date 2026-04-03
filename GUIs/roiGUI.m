@@ -1156,7 +1156,7 @@ ui.roiGUI.bg.Visible = 'on';
 %function to get vertices for roiStruct
     function roiStruct = getROIstructVertices(roiStruct)
         for roiN = 1:length(roiStruct)
-            if roiStruct(roiN).deleted == false 
+            if roiStruct(roiN).deleted == false
                 if any(strmatch(class(roiStruct(roiN).object),'imellipse'))
                     roiStruct(roiN).XYvertices = roiStruct(roiN).object.getVertices;
                 else
