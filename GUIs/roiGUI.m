@@ -529,7 +529,7 @@ ui.roiGUI.bg.Visible = 'on';
                     'frame',frame,'deleted',deleted);
                 
                 %if the ROI was deleted don't show it on the ROI figure
-                if loadedROI(roiN).deleted == 1
+                if loadedROI(roiN).deleted == true
                     sROI.roi(roiN).object.delete;
                 end
             end
@@ -538,7 +538,7 @@ ui.roiGUI.bg.Visible = 'on';
             %add position callback functions to each ROI so that they can
             %be repositioned and those positions will be saved
             for roiN = 1:length(sROI.roi)
-                if sROI.roi(roiN).deleted == 0
+                if sROI.roi(roiN).deleted == false
                     addNewPositionCallback(sROI.roi(roiN).object,...
                         @(pos) getpos(pos,sROI.roi(roiN).object,roiN));
                 end
@@ -585,7 +585,7 @@ ui.roiGUI.bg.Visible = 'on';
                     ROIvertices = hROI.getVertices;
                 end
                 frame = inputROI.fluo2p.roi(roiN).frame;
-                deleted = 0;
+                deleted = false;
                 sROI.roi(roiN) = struct('object',hROI,...
                     'ID',ID,'pos',pos,'XYvertices',ROIvertices,...
                     'label',text(ui.roiGUI.ax,...
@@ -666,7 +666,7 @@ ui.roiGUI.bg.Visible = 'on';
             sROI.roi(roiIDX).XYvertices = ROIvertices;
             sROI.roi(roiIDX).label = text(ROIpos(1),ROIpos(2)-5,ID,'Color','g','FontWeight','bold');
             sROI.roi(roiIDX).frame = ui.roiGUI.frame;
-            sROI.roi(roiIDX).deleted = 0;
+            sROI.roi(roiIDX).deleted = false;
         else
             %create ROI structure if it's the first ROI
             if ~isfield(sROI,'frame')
@@ -676,7 +676,7 @@ ui.roiGUI.bg.Visible = 'on';
             sROI.roi = struct('object',hROI,...
                 'ID','1','pos',ROIpos,'XYvertices',ROIvertices,...
                 'label',text(ROIpos(1),ROIpos(2)-5,'1','Color','g','FontWeight','bold'),...
-                'frame',ui.roiGUI.frame,'deleted',0);
+                'frame',ui.roiGUI.frame,'deleted',false);
         end
         
         if strmatch(class(sROI.roi(roiIDX).object),'imfreehand')
@@ -720,7 +720,7 @@ ui.roiGUI.bg.Visible = 'on';
                     ID = delROIids(roiN);
                     delIDX = find(strcmp(ID,allROI));
                     sROI.roi(delIDX).object.delete;
-                    sROI.roi(delIDX).deleted = 1;
+                    sROI.roi(delIDX).deleted = true;
                 end
                 clear roiN
                 sROI.roi = markDeletedROI(sROI.roi);
@@ -774,7 +774,7 @@ ui.roiGUI.bg.Visible = 'on';
                     addNewPositionCallback(sROI.roi(loadIDX).object,@(pos)...
                         getpos(pos,sROI.roi(loadIDX).object,loadIDX));
                     
-                    sROI.roi(loadIDX).deleted = 0;
+                    sROI.roi(loadIDX).deleted = false;
                     labelpos = sROI.roi(loadIDX).label.Position;
                     labelstr = sROI.roi(loadIDX).label.String;
                     sROI.roi(loadIDX).label.delete;
@@ -1156,7 +1156,7 @@ ui.roiGUI.bg.Visible = 'on';
 %function to get vertices for roiStruct
     function roiStruct = getROIstructVertices(roiStruct)
         for roiN = 1:length(roiStruct)
-            if roiStruct(roiN).deleted==0
+            if roiStruct(roiN).deleted == false
                 if any(strmatch(class(roiStruct(roiN).object),'imellipse'))
                     roiStruct(roiN).XYvertices = roiStruct(roiN).object.getVertices;
                 else
@@ -1175,7 +1175,7 @@ ui.roiGUI.bg.Visible = 'on';
         rawFroi = NaN(nROI,nFrames);
         
         for roiN = 1:length(roiStruct)
-            if roiStruct(roiN).deleted==0
+            if roiStruct(roiN).deleted == false
                 for nFrame = 1:size(img,3)
                     f = img(:,:,nFrame);
                     rawFroi(roiN,nFrame) = mean(f(roiStruct(roiN).mask));
