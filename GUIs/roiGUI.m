@@ -624,7 +624,7 @@ ui.roiGUI.bg.Visible = 'on';
             sROI.roi(roiIDX).XYvertices = ROIvertices;
             sROI.roi(roiIDX).label = text(ROIpos(1),ROIpos(2)-5,ID,'Color','g','FontWeight','bold');
             sROI.roi(roiIDX).frame = ui.roiGUI.frame;
-            sROI.roi(roiIDX).deleted = 0;
+            sROI.roi(roiIDX).deleted = false;
         else
             %create ROI structure if it's the first ROI
             if ~isfield(sROI,'frame')
@@ -634,7 +634,7 @@ ui.roiGUI.bg.Visible = 'on';
             sROI.roi = struct('object',hROI,...
                 'ID','1','pos',ROIpos,'XYvertices',ROIvertices,...
                 'label',text(ROIpos(1),ROIpos(2)-5,'1','Color','g','FontWeight','bold'),...
-                'frame',ui.roiGUI.frame,'deleted',0);
+                'frame',ui.roiGUI.frame,'deleted',false);
         end
         
         if strmatch(class(sROI.roi(roiIDX).object),'imfreehand')
@@ -678,7 +678,8 @@ ui.roiGUI.bg.Visible = 'on';
                     ID = delROIids(roiN);
                     delIDX = find(strcmp(ID,allROI));
                     sROI.roi(delIDX).object.delete;
-                    sROI.roi(delIDX).deleted = 1;
+                    sROI.roi(delIDX).label.delete;
+                    sROI.roi(delIDX).deleted = true;
                 end
                 clear roiN
                 sROI.roi = markDeletedROI(sROI.roi);
@@ -732,7 +733,7 @@ ui.roiGUI.bg.Visible = 'on';
                     addNewPositionCallback(sROI.roi(loadIDX).object,@(pos)...
                         getpos(pos,sROI.roi(loadIDX).object,loadIDX));
                     
-                    sROI.roi(loadIDX).deleted = 0;
+                    sROI.roi(loadIDX).deleted = false;
                     labelpos = sROI.roi(loadIDX).label.Position;
                     labelstr = sROI.roi(loadIDX).label.String;
                     sROI.roi(loadIDX).label.delete;
