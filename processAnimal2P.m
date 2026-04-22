@@ -1,4 +1,30 @@
 %% PIPELINE: NoRMCorre (motion correction) and FISSA
+%
+% Full 2P processing pipeline for a single animal session:
+%
+%   1. Tif inventory     - list all tifs, assign treatment (pre/post) and
+%                          FRA map labels, save tifFiles legend
+%   2. Condition split   - group tifs by treatment for independent motion
+%                          correction
+%   3. Motion correction - split multi-channel tifs if needed, concatenate
+%                          per group, run NoRMCorre non-rigid correction,
+%                          write corrected tifs for FISSA
+%   4. ROI drawing       - interactively draw ROIs on the motion-corrected
+%                          stack for each treatment condition
+%   5. ROI matching      - reconcile ROIs across pre/post conditions so the
+%                          same cells are tracked throughout
+%   6. Raw F extraction  - extract rawF and motion-corrected rawF per ROI
+%                          per tif, save to disk
+%   7. FISSA             - neuropil correction via Python (see section below)
+%   8. FISSA parsing     - load FISSA output, separate map vs. stim trials,
+%                          apply neuropil scaling, save tifFileList
+%   9. Stim alignment    - attach stimulus parameters to corrected traces
+%                          via stimParam2ROI
+%
+% OUTPUT: tifFileList struct with motion- and neuropil-corrected fluorescence
+%         traces (SCALEDfissaFroi, shape: ROI x frames) for each tif.
+%
+
 clearvars;close all;clc;
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -24,7 +50,7 @@ catch
     animal = char(inputdlg('Enter animal ID:','Animal Input',[1 35],{'AA0000'}));
 end
 
-%% Get list of tif files for analysis and treatment info
+%% 1. Get list of tif files for analysis and treatment info
 % DO NOT RUN IF RUNNING AGAIN FOR A DIFFERENT CELL TYPE
 
 tifFiles = dir(fullfile(dataPath,[animal '*.tif']));
@@ -58,8 +84,10 @@ end
 
 save(fullfile(dataPath,[animal '_tifFileLegend.mat']),'tifFiles')
 
-%% Split tifs into condition groups to be motion corrected separately
+%% 2. Split tifs into condition groups to be motion corrected separately
 % DO NOT RUN IF RUNNING AGAIN FOR A DIFFERENT CELL TYPE
+% Tifs are motion-corrected per group so that pre/post-treatment sessions
+% are not corrupted by large inter-group motion differences.
 
 %In case of REDO:
 % clear Ycon rawCatImg options_nonrigid NoRMCorreParams moCorrImgNonRigid shifts2 template2
@@ -84,7 +112,7 @@ else
 end
 save(fullfile(dataPath,[animal '_tifCondSplitLegend.mat']),'tifList')
 
-%% perform motion correction w/ NoRMCorre
+%% 3. Motion correction via NoRMCorre
 % DO NOT RUN IF RUNNING AGAIN FOR A DIFFERENT CELL TYPE
 
 moCorN = fieldnames(tifList);
@@ -93,11 +121,12 @@ if ~(exist(outputPath,'dir')==7)
     mkdir(outputPath)
 end
 
-%check if .tifs have multiple channels, if so, split them and rearrange
-%files
+% If tifs contain multiple channels (e.g. GCaMP + tdTomato), extract only
+% channel 2 (functional channel) so that NoRMCorre and FISSA receive
+% single-channel input.  Original multi-channel tifs are moved to rawMergedTifs/.
 [img,tmpHeader] = readSCIMtif(fullfile(tifList.(moCorN{1})(1).folder,...
     tifList.(moCorN{1})(1).name));
-% %{
+%{
 if isfield(tmpHeader,'hChannels') && ...
         numel(tmpHeader.hChannels.channelSave)>1 && ...
         isstruct(img)
@@ -124,7 +153,7 @@ for k = 1:length(moCorN)
     %concatenate tifs
     [Ycon,~] = concatenate_files(tifList.(moCorN{k}));
     rawCattemp = single(Ycon); % convert to single precision
-    rawCatImg.(moCorN{k}) = rawCattemp - min(rawCattemp(:));
+    rawCatImg.(moCorN{k}) = rawCattemp - min(rawCattemp(:)); % shift to non-negative for NoRMCorre
     clear Ycon
     % non-rigid motion correction (in parallel)
     gcp;
@@ -144,8 +173,10 @@ for k = 1:length(moCorN)
 end
 save(fullfile(dataPath,'NoRMCorred',[animal '_NoRMCorreParams.mat']),'NoRMCorreParams')
 
-%% In case of REDO or RESUME after motion correction:
-% RUN THIS IF RUNNING AGAIN FOR A DIFFERENT CELL TYPE
+%% 3b. REDO / RESUME after motion correction
+% RUN THIS BLOCK (uncomment %{ %}) INSTEAD OF SECTION 3 when:
+%   - motion correction was already run and you are drawing ROIs for a new cell type
+%   - picking up from a saved session (moCorrImgNonRigid is not in workspace)
 %{
 load(fullfile(dataPath,[animal '_tifCondSplitLegend.mat']),'tifList')
 load(fullfile(dataPath,[animal '_tifFileLegend.mat']),'tifFiles')
@@ -166,16 +197,16 @@ for k = 1:length(moCorN)
 end
 %}
 
-%% FOR EACH treatment condition (pre/post): 
-%1. RUN THIS CELL to Draw ROI from motion corrected concatenated stack
-%2. RUN NEXT CELL to save ROI to file
+%% 4. Draw ROIs on motion-corrected stack
+% Run this section once per treatment condition, then run section 5 to save.
+% Repeat for each condition before proceeding to section 6.
 
 moCorSeqN = listdlg('PromptString','Select treatment condition (pre/post) for which to draw ROI',...
     'ListString',moCorN);
 %outputs ROI to workspace and [animalID]_moCorrROI.mat into dataPath for use w/ FISSA
 TIFcatROIgui(moCorrImgNonRigid.(moCorN{moCorSeqN}))
 
-%% Save ROIs:  RUN AFTER DRAWING ROIs FOR EACH TREATMENT CONDITION
+%% 5. Save ROIs — run after drawing ROIs for each treatment condition
 
 nTifs = length(tifList.(moCorN{moCorSeqN}));
 tifIDXinAllTifList = ismember({tifFiles.name}',{tifList.(moCorN{moCorSeqN}).name}');
@@ -188,13 +219,13 @@ disp([regexp(dataPath,'[A-Z]{2}\d{4}','match','once') ...
     '_moCorrROI_' moCorN{moCorSeqN} '.mat saved to animal directory'])
 clear nTifs tifIDXinAllTifList
 
-%% Match ROI pre & post (after confirming all ROI for all tif sequences)
-%RUN THIS CELL ONLY AFTER RUNNING ABOVE 2 CELLS FOR EACH TREATMENT CONDITION
-
-%ensure true ROI are same pre and post
+%% 6. Match ROIs across treatment conditions
+% Run only after sections 4-5 have been completed for ALL conditions.
+% intersectROIfiles keeps only ROIs present in every condition so that the
+% same set of cells is compared pre and post treatment.
 intersectROIfiles(dataPath,animal,moCorN,tifList,tifFiles)
 
-%% AFTER ROI ARE SAVED:
+%% 7. Extract raw fluorescence per ROI and add to tifList
 %Add rawF, moCorr rawF, nFrames and frameRate to tifFiles struct
 
 for ROIfileN = 1:length(moCorN)
@@ -221,21 +252,21 @@ catch
     save([dataPath filesep animal '_moCorr_Tifs_Params.mat'],'tifList','allTifFiles','-v7.3')
 end
 
-%% NEUROPIL CORRECTION via FISSA: FISSAviaMatlab_prePostTreatment.py
+%% 8. Neuropil correction via FISSA  [PYTHON STEP — run outside MATLAB]
+%
+%   FISSA separates each ROI's signal from contaminating neuropil by
+%   decomposing the ROI trace and traces from surrounding neuropil rings.
+%
+%   Steps:
+%     1. Edit the animalDataPath variable in FISSAviaMatlab_prePostTreatment.py
+%     2. In a Python environment with FISSA installed, run:
+%          python FISSAviaMatlab_prePostTreatment.py
+%     3. FISSA reads ROI masks and the motion-corrected tifs from NoRMCorred/
+%        and writes output to NoRMCorred/FISSAoutput/matlab.mat
+%
+%   Resume here (section 9) once matlab.mat exists.
 
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-
-% 1.  edit animalDataPath line accordingly
-% 2.  run 'python FISSAviaMatlab_prePostTreatment.py' in python environment w/ fissa installed
-%FISSA basically just takes ROIs and folder of motion corrected tifs
-
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-
-%% Separate map data from tifFiles and FISSAoutput, add FISSAoutput to tifFileList 
+%% 9. Parse FISSA output: separate map vs. stim trials, apply neuropil scaling
 
 %load FISSA output: (again from exp.save_to_matlab() in 'FISSAscript_splitPrePost.py')
 %FISSA was given moCorr tiffs and ROIs from concatenated moCorr Tifs
@@ -304,6 +335,9 @@ end
 % animal = regexp(dataPath,'[A-Z]{2}\d{4}','match');
 % animal = animal{1};
 
+% fissaScaleFactor scales how aggressively neuropil is subtracted:
+%   corrected = ROI - scaleFactor * neuropil
+% Values < 1 reduce over-subtraction; 0.8 is a common conservative default.
 fissaScaleFactor = str2double(inputdlg('ENTER FACTOR BY WHICH TO SCALE FISSA SUBTRACTION (eg. 0.8): ',...
     'FISSA SCALING FACTOR',[1 80],{'0.8'}));
 tifFileList = FISSAoutput2tifFileList(FISSAoutput,tifFileList,fissaScaleFactor);
@@ -312,9 +346,10 @@ save(fullfile(dataPath,[animal '_tifFileList.mat']),...
         'dataPath','FISSAoutput','tifFileList','fissaScaleFactor','-v7.3')
 
 %% COMPLETE. YOU ARE NOW LEFT WITH MOTION AND NEUROPIL CORRECTED FLUORESCENCE TRACES FOR EACH ROI FOR EACH TIF
+%
+%   tifFileList.stim(n).SCALEDfissaFroi  ->  nROI x nFrames for the nth stimulus tif
+%   tifFileList.map(n).SCALEDfissaFroi   ->  nROI x nFrames for the nth FRA/BF mapping tif
 
-% eg. tifFileList.map.SCALEDfissaFroi is in shape ROI x fluoresence 
-% at corresponding .tif frame
-
-%see stimParam2ROI.m if have stim params in _Pulses.mat files
+%% 10. Align stimulus parameters to corrected traces
+% Requires _Pulses.mat files co-located with tifs.
 [pulseLegend2P,stimGroupIDX,ROIoutputTables] = stimParam2ROI(dataPath);
