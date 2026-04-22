@@ -1,4 +1,37 @@
 function [rawintensityROI, movie, header] = meanFluoROIvt(varargin)
+% MEANFLUOROIVT  Interactively select an ROI and extract mean fluorescence over time.
+%
+%   [rawintensityROI, movie, header] = meanFluoROIvt(Name, Value, ...)
+%
+%   Loads a fluorescence movie (.tif or .qcamraw), prompts the user to draw
+%   a rectangular ROI on the first frame (or on the dF/F spatial map for
+%   .qcamraw), then plots mean raw intensity and dF over time within that ROI.
+%   Frame rate is read from the ScanImage header for .tif files; for .qcamraw
+%   files it must be supplied via the 'fr' parameter.
+%
+%   Name-Value Inputs:
+%     'file'                 - path to a .tif or .qcamraw file
+%                              (default: '', opens a file browser)
+%     'baseline'             - [start end] time window (s) for baseline
+%                              (default: [2 3])
+%     'filtOrder'            - Butterworth filter order (default: 4)
+%                              (.qcamraw only)
+%     'filtCutoffFreq'       - low-pass cutoff frequency in Hz (default: 5)
+%                              (.qcamraw only)
+%     'stimlen'              - stimulus duration in s used to offset the
+%                              post-baseline temporal average window
+%                              (default: 0.4; .qcamraw only)
+%     'fr'                   - frame rate in Hz (default: 20; .qcamraw only;
+%                              read from header for .tif)
+%     'temporalAvgFrameWindow' - number of frames to average after stimulus
+%                              for the spatial dF/F map (default: 10;
+%                              .qcamraw only)
+%
+%   Outputs:
+%     rawintensityROI - 1 x nFrames vector of mean raw pixel intensity in ROI
+%     movie           - Height x Width x nFrames raw pixel array
+%     header          - ScanImage header lines (cell array) for .tif, or
+%                       struct of key-value pairs for .qcamraw
 
 p = inputParser;
 addParameter(p,'file','',@(x) ischar(x))

@@ -1,13 +1,23 @@
 function fileNames = splitTifChans(mergedChanTif,varargin)
-% splitTifChans  Split ScanImage .tif with multiple channels into .tif files with single channels.
-%   fileNames = splitTifChans(mergedChanTif,varargin)
+% SPLITTIFCHANS  Split a multi-channel ScanImage .tif into single-channel .tif files.
 %
-%   Additional input arguments: 
-%       '1' --> saves only tif with specified channel, replace with desired channel number
-%             
-%   PAC_20200213
+%   fileNames = splitTifChans(mergedChanTif)
+%   fileNames = splitTifChans(mergedChanTif, chanNum)
 %
-%   See also readSCIMtif.m
+%   Reads a ScanImage 5+ multi-channel .tif and writes one output file per
+%   channel, preserving the original ScanImage-compatible TIFF tags and
+%   storing frames as int16.  Output filenames are derived from the input
+%   by appending '_chan<N>' before the .tif extension.
+%
+%   Inputs:
+%     mergedChanTif - path to a multi-channel ScanImage .tif file
+%     chanNum       - (optional) scalar integer; if provided, only the
+%                     specified channel is extracted and saved
+%
+%   Output:
+%     fileNames - cell array of output file paths, one per channel written
+%
+%   See also readSCIMtif
 
 %only for SCIM 5+
 %prevents printing of irrelevant tif header errors

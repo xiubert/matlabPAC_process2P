@@ -1,4 +1,42 @@
 function [mdl, ciRegLine, hScatter, hRegLineCI, hRegLine, hRef, hFig] = regPlot(X,Y,varargin)
+% REGPLOT  Scatter plot with a linear regression line and 95% CI band.
+%
+%   [mdl, ciRegLine, hScatter, hRegLineCI, hRegLine, hRef, hFig] = regPlot(X, Y)
+%   [...] = regPlot(X, Y, Name, Value, ...)
+%
+%   Fits a linear model (Y ~ X) using fitlm, plots the scatter, regression
+%   line, and shaded 95% confidence interval band.  An optional reference
+%   line (e.g. unity line) can be overlaid.
+%
+%   Required Inputs:
+%     X, Y          - numeric vectors of equal length
+%
+%   Name-Value Inputs:
+%     'regLine'      - logical; draw regression line and CI band (default: true)
+%     'intercept'    - logical; include intercept in model (default: true)
+%     'colors'       - 2x3 RGB matrix; row 1 = line color, row 2 = CI fill
+%                      color (default: black line, gray fill)
+%     'logScale'     - logical; log10-transform X and Y before fitting
+%                      (default: false)
+%     'sigID'        - grouping vector for gscatter; when length > 1, points
+%                      are split into two groups styled as 'o' and '.'
+%                      (default: false)
+%     'fName'        - figure name string (default: 'scatter plot with
+%                      regression line and CI')
+%     'refLine'      - logical; overlay a reference line (default: false)
+%     'mRefLine'     - slope of reference line (default: 1)
+%     'bRefLine'     - intercept of reference line (default: 0)
+%     'squareAxis'   - logical; set equal x/y limits spanning both axes
+%                      (default: false)
+%
+%   Outputs:
+%     mdl        - LinearModel object from fitlm
+%     ciRegLine  - Nx2 matrix of 95% CI bounds from predict
+%     hScatter   - handle to scatter plot
+%     hRegLineCI - handle to CI fill patch
+%     hRegLine   - handle to regression line
+%     hRef       - handle to reference line (empty if 'refLine' is false)
+%     hFig       - handle to figure
 
 p = inputParser;
 addRequired(p, 'X', @isnumeric);
