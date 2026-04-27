@@ -27,15 +27,7 @@
 
 clearvars;close all;clc;
 
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%%%%%%%%%%%%%%%%%%%%%%%%%%%  EDIT HERE  %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-
-dataPath = '/media/DATA/backups/sutter2P_backup/D_drive/offsetCTRL/CC0001/CC0001B';
-
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%  DONE  %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+dataPath = uigetdir(".","Data path...");
 
 if ~isfolder(dataPath)
     error('Data path not found')
@@ -177,7 +169,7 @@ save(fullfile(dataPath,'NoRMCorred',[animal '_NoRMCorreParams.mat']),'NoRMCorreP
 % RUN THIS BLOCK (uncomment %{ %}) INSTEAD OF SECTION 3 when:
 %   - motion correction was already run and you are drawing ROIs for a new cell type
 %   - picking up from a saved session (moCorrImgNonRigid is not in workspace)
-%{
+% %{
 load(fullfile(dataPath,[animal '_tifCondSplitLegend.mat']),'tifList')
 load(fullfile(dataPath,[animal '_tifFileLegend.mat']),'tifFiles')
 % FRAmapIDX = contains({tifFiles.treatment},'map')';
