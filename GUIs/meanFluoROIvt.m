@@ -1,4 +1,4 @@
-function [rawintensityROI, movie, header] = meanFluoROIvt(varargin)
+cfunction [rawintensityROI, movie, header] = meanFluoROIvt(varargin)
 % MEANFLUOROIVT  Interactively select an ROI and extract mean fluorescence over time.
 %
 %   [rawintensityROI, movie, header] = meanFluoROIvt(Name, Value, ...)
@@ -125,7 +125,7 @@ elseif strmatch('.qcamraw',ext)
         spaces = regexp(line, ' ');
         
         if strfind(line,'-') %fix for incompatible fieldnames
-            line(1:colonLoc-1) = strrep(line(1:colonLoc-1),'-','_');
+            line(1:colonLoc(1)-1) = strrep(line(1:colonLoc(1)-1),'-','_');
         end
         
         %fill fieldname field with field data
