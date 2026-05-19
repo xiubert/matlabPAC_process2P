@@ -130,11 +130,11 @@ elseif strmatch('.qcamraw',ext)
         
         %fill fieldname field with field data
         if isequal(colonLoc(1),spaces(end)-1)
-            header.(line(1:colonLoc-1)) = line(colonLoc+2:end);
+            header.(line(1:colonLoc(1)-1)) = line(colonLoc(1)+2:end);
         elseif numel(spaces)>2 %for ROI field
-            header.(line(1:colonLoc-1)) = line(colonLoc+2:end);
+            header.(line(1:colonLoc(1)-1)) = line(colonLoc(1)+2:end);
         else %for fields with unit description in brackets
-            header.(line(1:colonLoc-1)) = line(colonLoc+2:spaces(end)-1);
+            header.(line(1:colonLoc(1)-1)) = line(colonLoc(1)+2:spaces(end)-1);
         end
     end
     
