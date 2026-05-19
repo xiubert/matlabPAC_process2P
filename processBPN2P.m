@@ -1,9 +1,16 @@
+%%
+if ~exist('dataPath','var')
+    dataPath = uigetdir("C:\Users\JIC402\OneDrive - University of Pittsburgh\Data","Data path...");
+    animal = regexp(dataPath,'[A-Z]{2}\d{4}','match','once');
+    load(fullfile(dataPath,[animal '_anmlROI_BPNstimTable.mat']))
+end
+%%
 anmlROIbyStim.t_total = rowfun(@(F,fr) ...
     {(1:size(F,2))/fr},...
     anmlROIbyStim,'InputVariables',{'SCALEDfissaFroi','frameRate'},...
     'ExtractCellContents',true,'OutputFormat','uniform');
 
-% tBase = [0 1];
+% tBaseLine = [onset-1 onset];
 anmlROIbyStim.t_dFF = rowfun(@(t,onset) ...
     {t(find((t>onset-1),1,'first'):end)},...
     anmlROIbyStim,'InputVariables',{'t_total','sonset'},...
@@ -39,11 +46,12 @@ resultsTable = rowfun(@(F, fr, sonset, mspulseLen) ...
 anmlROIbyStim.sigPeak = resultsTable(:,1);
 anmlROIbyStim.sig     = resultsTable(:,2);
 anmlROIbyStim.pkResp  = resultsTable(:,3);
-
+%%
+save(fullfile(dataPath,[animal '_anmlROI_BPNstimTable.mat']),"anmlROIbyStim",'-append');
 %%
 % Inputs (set these)
 targetROI = '1';      % desired roiID
-targetdB  = 80;     % desired dB
+targetdB  = 30;     % desired dB
 
 % Find row(s) matching the ROI and dB
 rowMask = (anmlROIbyStim.roiID == targetROI) & (anmlROIbyStim.dBampl == targetdB);
@@ -76,7 +84,7 @@ grid on;
 %%
 % average responses (dFF) for a given cell across sound levels
 % Inputs
-targetROI = '4';   % desired roiID
+targetROI = '2';   % desired roiID
 
 % Select rows for that ROI
 rows = find(anmlROIbyStim.roiID == targetROI);
@@ -109,15 +117,9 @@ for k = 1:numel(dbVals)
     sem = std(dffMat, 0, 1, 'omitnan') ./ sqrt(sum(~isnan(dffMat),1));
 
     % Plot shaded SEM band
-    upper = mu + sem;
-    lower = mu - sem;
-    x = [timeMat(:); flipud(timeMat(:))];
-    y = [upper(:); flipud(lower(:))];
-    hPatch = patch(x, y, colors(k,:), 'FaceAlpha', 0.25, 'EdgeColor', 'none');
-
-    % Plot mean line
-    plot(timeMat, mu, 'Color', colors(k,:), 'LineWidth', 1.8);
-
+    [hPatch,hPlot] =fillSEMplot(timeMat,mu,sem,colors(k,:),colors(k,:));
+    set(hPatch, 'FaceAlpha', 0.25)%transparency of SEM band
+    set(hPlot, 'LineWidth', 1.8)%thickness of the mean line
     % optional: store handles for legend
     hLine(k) = plot(NaN, NaN, 'Color', colors(k,:), 'LineWidth', 1.8); %#ok<SAGROW>
 end
@@ -127,7 +129,55 @@ xline(1,'--','BPN');
 xline(1.4,'--');
 xlabel('Time (s)');
 ylabel('dF/F');
-title(sprintf('ROI %d: average dF/F per dB', targetROI));
+title(sprintf('ROI %s: average dF/F per dB', targetROI));
+legend(hLine, arrayfun(@(v) sprintf('%d dB', v), dbVals, 'UniformOutput', false), 'Location', 'best');
+grid on;
+hold off;
+%% avg
+% Get unique dB values across ALL cells
+dbVals = unique(anmlROIbyStim.dBampl);
+
+% Prepare figure
+figure; hold on;
+cmap = jet(numel(dbVals));
+colors = cmap;
+hLine = gobjects(numel(dbVals), 1); % Preallocate for legend
+
+for k = 1:numel(dbVals)
+    db = dbVals(k);
+    
+    % Find all rows matching this dB level for any ROI
+    mask = (anmlROIbyStim.dBampl == db);
+    rows = find(mask);
+    if isempty(rows)
+        continue
+    end
+    
+    % Extract time vector from the first matching row
+    timeMat = anmlROIbyStim.t_dFF{rows(1)};
+    
+    % Vertically concatenate dFF trial matrices from all cells
+    allDffCell = anmlROIbyStim.dFF(rows);
+    dffMat = vertcat(allDffCell{:}); 
+
+    % Compute mean and SEM across all combined trials (columns)
+    mu  = mean(dffMat, 1, 'omitnan');
+    sem = std(dffMat, 0, 1, 'omitnan') ./ sqrt(sum(~isnan(dffMat), 1));
+
+    % Plot shaded SEM band
+    [hPatch,hPlot] =fillSEMplot(timeMat,mu,sem,colors(k,:),colors(k,:));
+    set(hPatch, 'FaceAlpha', 0.25)%transparency of SEM band
+    set(hPlot, 'LineWidth', 1.8)%thickness of the mean line
+    % Store handle for legend entry
+    hLine(k) = plot(NaN, NaN, 'Color', colors(k,:), 'LineWidth', 1.8); 
+end
+
+% Finalize plot
+xline(1, '--', 'BPN');
+xline(1.4, '--');
+xlabel('Time (s)');
+ylabel('dF/F');
+title('All ROIs: Population Average dF/F per dB');
 legend(hLine, arrayfun(@(v) sprintf('%d dB', v), dbVals, 'UniformOutput', false), 'Location', 'best');
 grid on;
 hold off;
@@ -138,7 +188,8 @@ hold off;
 [G, dBvals] = findgroups(anmlROIbyStim.dBampl);      % G groups rows by dB, dBvals are group keys
 % data=cell2mat(GroupedTbl.sigPeak);
 
-raw_sigPeak = anmlROIbyStim.sigPeak;        % cell array, some cells empty
+% raw_sigPeak = anmlROIbyStim.sigPeak;        % cell array, some cells empty
+raw_sigPeak = anmlROIbyStim.pkResp;
 % n = numel(c);
 % data = NaN(n,1);
 % nonEmpty = ~cellfun(@isempty, c);

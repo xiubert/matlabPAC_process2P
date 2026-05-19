@@ -1,9 +1,12 @@
-function [rawFroi,nFrames,varargout] = TifROImask2rawFroi(img,roiStruct)
+function [rawFroi,nFrames,varargout] = TifROImask2rawFroi(img,roiStruct,channel)
+
+if nargin < 3
+    channel = 2;
+end
 
 %process tif file if input is not an image matrix
 if ischar(img) || isstring(img)
-    %always load channel 2 containing green channel
-    [img,imHeader] = readSCIMtif(img,2);
+    [img,imHeader] = readSCIMtif(img,channel);
     nFrames = imHeader.nFrames;
     varargout{1} = round(imHeader.frameRate);
 else

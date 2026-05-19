@@ -32,11 +32,58 @@ else
         FISSA = false;
 end
 
-if any(contains(tifStimParamTable.Properties.VariableNames,'rawPulse'))
-    [stimTable,~,ic] = unique(removevars(tifStimParamTable,'rawPulse'));
+%%
+if ismember('totalPulses', tifStimParamTable.Properties.VariableNames) && any(tifStimParamTable.totalPulses > 1)
+    % multiple pulses for each tif; expand the table
+    allVars = tifStimParamTable.Properties.VariableNames;
+    isCell = varfun(@iscell, tifStimParamTable, 'OutputFormat', 'uniform');
+    cellVars = allVars(isCell);
+    scalarVars = allVars(~isCell);
+    tmpS = struct();
+    for v = allVars
+        tmpS.(v{1}) = {};
+    end
+    for r = 1:height(tifStimParamTable)
+        % determine how many elements to expand for this row
+        % assume all cellVars have same length for this row; use first cellVar
+        n = numel(tifStimParamTable.(cellVars{1}){r});
+        % append scalar variables repeated n times except 'trigDelay', 'ISI' and 'totalPulses'
+        repVars = setdiff(scalarVars, {'trigDelay','ISI','totalPulses'}, 'stable');
+        for s = 1:numel(repVars)
+            name = repVars{s};
+            val = tifStimParamTable.(name)(r);
+            replicated = repmat({val}, n, 1);
+            tmpS.(name) = [tmpS.(name); replicated];
+        end
+        % append cell variables by taking contents of the cell (expected n×1)
+        for c = 1:numel(cellVars)
+            name = cellVars{c};
+            cellContents = tifStimParamTable.(name){r}; % should be an n×1 cell
+            tmpS.(name) = [tmpS.(name); cellContents];
+        end
+    end
+    % Convert accumulated cell columns back to table
+    tmpT = table();
+    tableVars = setdiff(allVars, {'trigDelay','ISI','totalPulses'}, 'stable');
+    for v = tableVars
+        name = v{1};
+        col = tmpS.(name);
+        % If every element is a numeric (in a cell), convert to numeric column
+        if all(cellfun(@(x) isnumeric(x), col))
+            tmpT.(name) = cell2mat(col);
+        else
+            tmpT.(name) = string(col);  % convert to string column
+        end
+    end 
 else
-    [stimTable,~,ic] = unique(tifStimParamTable);
+    tmpT = tifStimParamTable;% one pulse for each tif
 end
+%%
+if any(contains(tifStimParamTable.Properties.VariableNames,'rawPulse'))
+    tmpT = removevars(tmpT,'rawPulse');
+end
+
+[stimTable,~,ic] = unique(tmpT);
 
 %sort stim table by treatment
 [sT,sIDX] = sortrows(stimTable,'treatment');
@@ -67,11 +114,32 @@ end
 TanmlROI = [addvars(TanmlROI,stimID) roiTstim];
 
 %get roiF data by tif file
-tifRawF = {tifFileListStim.rawFroi}';
-tifMoCorRawF = {tifFileListStim.moCorRawFroi}';
+tifRawF = {};
+tifMoCorRawF = {};
 if FISSA
-    tifFissaFroi = {tifFileListStim.fissaFroi}';
-    tifSCALEDfissaFroi = {tifFileListStim.SCALEDfissaFroi}';
+    tifFissaFroi = {};
+    tifSCALEDfissaFroi = {};
+end
+for i = 1:length(tifFileListStim)
+    if ismember('totalPulses', tifStimParamTable.Properties.VariableNames) && tifStimParamTable.totalPulses(i) > 1
+        % multiple pulses for each tif
+        framesPreTrig = tifFileListStim(i).frameRate*tifStimParamTable{i,'trigDelay'};
+        framesPerPulse = tifFileListStim(i).frameRate*tifStimParamTable{i,'ISI'};
+        totalPulse = tifStimParamTable.totalPulses(i);
+        tifRawF = [tifRawF;mat2cell(tifFileListStim(i).rawFroi(:,framesPreTrig+1:framesPreTrig+framesPerPulse*totalPulse),length(moCorROI),repmat(framesPerPulse,1,totalPulse))'];
+        tifMoCorRawF = [tifMoCorRawF;mat2cell(tifFileListStim(i).moCorRawFroi(:,framesPreTrig+1:framesPreTrig+framesPerPulse*totalPulse),length(moCorROI),repmat(framesPerPulse,1,totalPulse))'];
+        if FISSA
+            tifFissaFroi = [tifFissaFroi,mat2cell(tifFileListStim(i).fissaFroi(:,framesPreTrig+1:framesPreTrig+framesPerPulse*totalPulse),length(moCorROI),repmat(framesPerPulse,1,totalPulse))'];
+            tifSCALEDfissaFroi = [tifSCALEDfissaFroi,mat2cell(tifFileListStim(i).SCALEDfissaFroi(:,framesPreTrig+1:framesPreTrig+framesPerPulse*totalPulse),length(moCorROI),repmat(framesPerPulse,1,totalPulse))'];
+        end
+    else% one pulse for each tif
+        tifRawF = [tifRawF; {tifFileListStim(i).rawFroi}'];
+        tifMoCorRawF = [tifMoCorRawF; {tifFileListStim(i).moCorRawFroi}'];
+        if FISSA
+            tifFissaFroi = [tifFissaFroi; {tifFileListStim(i).fissaFroi}'];
+            tifSCALEDfissaFroi = [tifSCALEDfissaFroi; {tifFileListStim(i).SCALEDfissaFroi}'];
+        end
+    end
 end
 
 %organize pulseID info
@@ -94,7 +162,7 @@ for nStim = 1:size(stimTable,1) %faster if loop over stim instead of ROI
     %get tifs associated with corresponding stim condition
     idxTif = find(nStim==stimIDX);
      
-    frameRate(nStim) = tifFileListStim(idxTif(1)).frameRate;
+    frameRate(nStim) = tifFileListStim(1).frameRate;% assume same frameRate for all tif files
     if any(contains(tifStimParamTable.Properties.VariableNames,'rawPulse'))
         pulseID{nStim} = tifPulseID(idxTif);
     end
@@ -124,7 +192,7 @@ FR = zeros(size(TanmlROI,1),1);
 for nStim = 1:size(stimTable,1)
     FR(TanmlROI.stimID==nStim) = frameRate(nStim);
 end
-TanmlROI = addvars(TanmlROI,FR,'After','trigDelay','NewVariableNames',{'frameRate'});
+TanmlROI = addvars(TanmlROI,FR,'NewVariableNames',{'frameRate'});
 
 %add FISSA output
 if FISSA

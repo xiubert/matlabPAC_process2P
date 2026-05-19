@@ -11,54 +11,36 @@ tmp = load(fullfile(dataPath,tmp0{1}),...
 moCorROI = tmp.moCorROI;
 clear tmp*
 
-load(fullfile(dataPath,[animal '_tifFileList.mat']),...
-    'tifFileList','FISSAoutput','fissaScaleFactor')
+load(fullfile(dataPath,[animal '_tifFileList.mat']),'tifFileList')
 
 % get pulse name for each tif
 pulseLegend2P = tifPulseLegend2P(dataPath);
 
+save(fullfile(dataPath,[animal '_pulseLegend2P.mat']),'pulseLegend2P','-v7.3')
+
 % sort by stimulus group
+% for PT in contrast
 stimGroupIDX.ptStimIDX.pulseLegend2P = contains({pulseLegend2P.pulseSet},'PTinContrast')';
 stimGroupIDX.ptStimIDX.tifFileList = ismember({tifFileList.stim.name},...
     {pulseLegend2P(stimGroupIDX.ptStimIDX.pulseLegend2P).tif})';
-%for single BPN
+% for BPN
 stimGroupIDX.BPNStimIDX.pulseLegend2P = contains({pulseLegend2P.pulseSet},'BPN')';
 stimGroupIDX.BPNStimIDX.tifFileList = ismember({tifFileList.stim.name},...
     {pulseLegend2P(stimGroupIDX.BPNStimIDX.pulseLegend2P).tif})';
-%for BPN train
-% stimGroupIDX.BPNStimIDX.tifFileList = ismember({tifFileList.BPN.name},...
-%     {pulseLegend2P(stimGroupIDX.BPNStimIDX.pulseLegend2P).tif})';
-
+% for spont
+stimGroupIDX.spontStimIDX.pulseLegend2P = contains({pulseLegend2P.pulseSet},'spont')';
+stimGroupIDX.spontStimIDX.tifFileList = ismember({tifFileList.stim.name},...
+    {pulseLegend2P(stimGroupIDX.spontStimIDX.pulseLegend2P).tif})';
+% for contrast change
 stimGroupIDX.contrastChangeIDX.pulseLegend2P = contains({pulseLegend2P.pulseSet},'contrastChange')';
 stimGroupIDX.contrastChangeIDX.tifFileList = ismember({tifFileList.stim.name},...
     {pulseLegend2P(stimGroupIDX.contrastChangeIDX.pulseLegend2P).tif})';
+% for pupil reflex
 stimGroupIDX.pupilReflexIDX.pulseLegend2P = contains({pulseLegend2P.pulseSet},'LED trigger')';
 stimGroupIDX.pupilReflexIDX.tifFileList = ismember({tifFileList.stim.name},...
     {pulseLegend2P(stimGroupIDX.pupilReflexIDX.pulseLegend2P).tif})';
 
-%BPN
-if sum(stimGroupIDX.BPNStimIDX.tifFileList)>1
-    
-    % get stim params for each tif
-    tifStimParamTable = stimParams2TifTable(...
-        tifFileList.stim(stimGroupIDX.BPNStimIDX.tifFileList),dataPath);
-    
-    % sort ROIs by stim params
-    [anmlROIbyStim,stimTable] = anmlROIbyStimTable(animal,...
-        tifFileList.stim(stimGroupIDX.BPNStimIDX.tifFileList),...
-        moCorROI,...
-        tifStimParamTable);
-    outputTables{end+1} = 'tifStimParamTable';
-    outputTables{end+1} = tifStimParamTable;
-    outputTables{end+1} = 'anmlROIbyStim';
-    outputTables{end+1} = anmlROIbyStim;
-    outputTables{end+1} = 'stimTable';
-    outputTables{end+1} = stimTable;
-    
-    save(fullfile(dataPath,[animal '_anmlROI_stimTable.mat']),'anmlROIbyStim','stimTable','tifStimParamTable',...
-        'dataPath','FISSAoutput','tifFileList','fissaScaleFactor',...
-        'stimGroupIDX','pulseLegend2P','-v7.3')
-end
+save(fullfile(dataPath,[animal '_stimGroupIDX.mat']),'stimGroupIDX','-v7.3')
 
 %sort pure tone in contrast stims
 if sum(stimGroupIDX.ptStimIDX.tifFileList)>1
@@ -79,13 +61,74 @@ if sum(stimGroupIDX.ptStimIDX.tifFileList)>1
     outputTables{end+1} = 'stimTable';
     outputTables{end+1} = stimTable;
     
-    save(fullfile(dataPath,[animal '_anmlROI_stimTable.mat']),'anmlROIbyStim','stimTable','tifStimParamTable',...
-        'dataPath','FISSAoutput','tifFileList','fissaScaleFactor',...
-        'stimGroupIDX','pulseLegend2P','-v7.3')
-else
-    save(fullfile(dataPath,[animal '_tifFileList.mat']),...
-        'dataPath','FISSAoutput','tifFileList','fissaScaleFactor',...
-        'stimGroupIDX','pulseLegend2P','-v7.3')
+    save(fullfile(dataPath,[animal '_anmlROI_CGCstimTable.mat']),...
+        'anmlROIbyStim','stimTable','tifStimParamTable',...
+        'dataPath','-v7.3')
+end
+
+%BPN
+if sum(stimGroupIDX.BPNStimIDX.tifFileList)>1
+    
+    % get stim params for each tif
+    tifStimParamTable = stimParams2TifTable(...
+        tifFileList.stim(stimGroupIDX.BPNStimIDX.tifFileList),dataPath);
+    
+    % sort ROIs by stim params
+    [anmlROIbyStim,stimTable] = anmlROIbyStimTable(animal,...
+        tifFileList.stim(stimGroupIDX.BPNStimIDX.tifFileList),...
+        moCorROI,...
+        tifStimParamTable);
+    outputTables{end+1} = 'tifStimParamTable';
+    outputTables{end+1} = tifStimParamTable;
+    outputTables{end+1} = 'anmlROIbyStim';
+    outputTables{end+1} = anmlROIbyStim;
+    outputTables{end+1} = 'stimTable';
+    outputTables{end+1} = stimTable;
+    
+    save(fullfile(dataPath,[animal '_anmlROI_BPNstimTable.mat']),...
+        'anmlROIbyStim','stimTable','tifStimParamTable',...
+        'dataPath','-v7.3')
+end
+
+% SPONT
+%%%
+% Error using tabular/unique (line 39)
+% Unable to group rows using unique values of the table variable 'msStimLen'.  UNIQUE returned an error.
+% 
+% Error in anmlROIbyStimTable (line 86)
+% [stimTable,~,ic] = unique(tmpT);
+% 
+% Error in stimParam2ROI (line 101)
+%     [anmlROIbyStim,stimTable] = anmlROIbyStimTable(animal,...
+% 
+% Error in processAnimal2P (line 347)
+% [pulseLegend2P,stimGroupIDX,ROIoutputTables] = stimParam2ROI(dataPath);
+% 
+% Caused by:
+%     Error using cell/unique (line 85)
+%     Cell array input must be a cell array of character vectors.
+%%%
+if sum(stimGroupIDX.spontStimIDX.tifFileList)>1
+    
+    % get stim params for each tif
+    tifStimParamTable = stimParams2TifTable(...
+        tifFileList.stim(stimGroupIDX.spontStimIDX.tifFileList),dataPath);
+    
+    % sort ROIs by stim params
+    [anmlROIbyStim,stimTable] = anmlROIbyStimTable(animal,...
+        tifFileList.stim(stimGroupIDX.spontStimIDX.tifFileList),...
+        moCorROI,...
+        tifStimParamTable);
+    outputTables{end+1} = 'tifStimParamTable';
+    outputTables{end+1} = tifStimParamTable;
+    outputTables{end+1} = 'anmlROIbyStim';
+    outputTables{end+1} = anmlROIbyStim;
+    outputTables{end+1} = 'stimTable';
+    outputTables{end+1} = stimTable;
+    
+    save(fullfile(dataPath,[animal '_anmlROI_SpontstimTable.mat']),...
+        'anmlROIbyStim','stimTable','tifStimParamTable',...
+        'dataPath','-v7.3')
 end
 
 %sort contrast change stimulus

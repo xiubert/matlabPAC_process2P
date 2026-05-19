@@ -24,12 +24,14 @@ catch ME %find via MException.last
 end
 
 % determine pulse type for respective stimParam extract function
-if contains(tempStim.pulse.pulseset,'PTinContrast')
+if contains(tempStim.pulse(1).pulseset,'PTinContrast')
     stimParamExtractFcn = @extractStimParams;
-elseif contains(tempStim.pulse.pulseset,'contrastChange')
+elseif contains(tempStim.pulse(1).pulseset,'contrastChange')
     stimParamExtractFcn = @extractContrastChangeParams;
-elseif contains(tempStim.pulse.pulseset,'BPN')
+elseif contains(tempStim.pulse(1).pulseset,'BPN')
     stimParamExtractFcn = @extractBPNStimParams;
+elseif contains(tempStim.pulse(1).pulseset,'spont')
+    stimParamExtractFcn = @extractSpontParams;
 end
 
 % initialize table with first pulse
@@ -40,6 +42,16 @@ tifStimParamTable = cell2table(emptyCells2NaN(struct2cell(tempParams)'),'Variabl
 for nTif = 2:length(fileStruct)
     try
         stim = load(fullfile(fileStruct(nTif).folder,fileStruct(nTif).name));
+        if contains(tempStim.pulse(1).pulseset,'PTinContrast')
+            stimParamExtractFcn = @extractStimParams;
+        elseif contains(tempStim.pulse(1).pulseset,'contrastChange')
+            stimParamExtractFcn = @extractContrastChangeParams;
+        elseif contains(tempStim.pulse(1).pulseset,'BPN')
+            stimParamExtractFcn = @extractBPNStimParams;
+        elseif contains(tempStim.pulse(1).pulseset,'spont')
+            stimParamExtractFcn = @extractSpontParams;
+        end
+        
     catch ME %find via MException.last
         if (strcmp(ME.identifier,'MATLAB:load:couldNotReadFile'))
             stim = load(fullfile(dataDir,fileStruct(nTif).name));
@@ -56,7 +68,7 @@ for nTif = 2:length(fileStruct)
     clear stim
 end
 
-tifStimParamTable.tif = {fileStruct.tif}';
-tifStimParamTable.treatment = {fileStruct.treatment}';
+tifStimParamTable.tif = convertCharsToStrings({fileStruct.tif}');
+tifStimParamTable.treatment = convertCharsToStrings({fileStruct.treatment}');
 
 end
