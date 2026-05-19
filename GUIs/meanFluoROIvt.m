@@ -1,4 +1,4 @@
-cfunction [rawintensityROI, movie, header] = meanFluoROIvt(varargin)
+function [rawintensityROI, movie, header] = meanFluoROIvt(varargin)
 % MEANFLUOROIVT  Interactively select an ROI and extract mean fluorescence over time.
 %
 %   [rawintensityROI, movie, header] = meanFluoROIvt(Name, Value, ...)
