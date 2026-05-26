@@ -70,5 +70,8 @@ end
 
 tifStimParamTable.tif = convertCharsToStrings({fileStruct.tif}');
 tifStimParamTable.treatment = convertCharsToStrings({fileStruct.treatment}');
+% Important
+% parameters specific to each TIF file are stored as scalar variables,
+% while parameters extracted from the pulse(s) are stored as cell variables
 
 end

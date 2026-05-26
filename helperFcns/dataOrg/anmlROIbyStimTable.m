@@ -33,12 +33,13 @@ else
 end
 
 %%
+allVars = tifStimParamTable.Properties.VariableNames;
+isCell = varfun(@iscell, tifStimParamTable, 'OutputFormat', 'uniform');
+cellVars = allVars(isCell);
+scalarVars = allVars(~isCell);
+tmpT = table();
 if ismember('totalPulses', tifStimParamTable.Properties.VariableNames) && any(tifStimParamTable.totalPulses > 1)
     % multiple pulses for each tif; expand the table
-    allVars = tifStimParamTable.Properties.VariableNames;
-    isCell = varfun(@iscell, tifStimParamTable, 'OutputFormat', 'uniform');
-    cellVars = allVars(isCell);
-    scalarVars = allVars(~isCell);
     tmpS = struct();
     for v = allVars
         tmpS.(v{1}) = {};
@@ -63,7 +64,6 @@ if ismember('totalPulses', tifStimParamTable.Properties.VariableNames) && any(ti
         end
     end
     % Convert accumulated cell columns back to table
-    tmpT = table();
     tableVars = setdiff(allVars, {'trigDelay','ISI','totalPulses'}, 'stable');
     for v = tableVars
         name = v{1};
@@ -75,13 +75,28 @@ if ismember('totalPulses', tifStimParamTable.Properties.VariableNames) && any(ti
             tmpT.(name) = string(col);  % convert to string column
         end
     end 
-else
-    tmpT = tifStimParamTable;% one pulse for each tif
+else% one pulse for each tif
+    for v = allVars
+        name = v{1};
+        col = tifStimParamTable.(name);
+        if iscell(col)
+            if all(cellfun(@(x) isnumeric(x), col))
+                tmpT.(name) = cell2mat(col);
+            else
+                tmpT.(name) = string(col);
+            end
+        else
+            tmpT.(name) = col;
+        end
+    end
 end
 %%
 if any(contains(tifStimParamTable.Properties.VariableNames,'rawPulse'))
     tmpT = removevars(tmpT,'rawPulse');
 end
+
+% tmpT = convertvars(tmpT, @(x) iscell(x) && isnumeric(x), 'double');
+% tmpT = convertvars(tmpT, @(x) iscell(x) && any(cellfun(@ischar, x)), 'string');
 
 [stimTable,~,ic] = unique(tmpT);
 
@@ -102,7 +117,7 @@ stimTable = sT;
 clear sT
 
 %begin to create table of ROIs for each stim
-TanmlROI = table(repmat(string(animal),[length(moCorROI) 1]),string({moCorROI.ID})',...
+TanmlROI = table(repmat(string(animal),[length(moCorROI) 1]),string({moCorROI.ID})',...%changed from char to string
     'VariableNames',{'animal','roiID'});%modified since 1 roi caused error
 TanmlROI = repmat(TanmlROI,[size(stimTable,1) 1]);
 stimID = ones(length(moCorROI),1);

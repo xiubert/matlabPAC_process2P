@@ -16,6 +16,7 @@ for k = 1:numel(fn)
     vals{k} = {tmp.(fn{k})}.';
 end
 tmp_struct = cell2struct(vals, fn);
+
 for k = 1:numel(fn)
     stimParams.(fn{k}) = tmp_struct.(fn{k});
 end
