@@ -1,6 +1,9 @@
 %%
 if ~exist('dataPath','var')
-    dataPath = uigetdir("C:\Users\JIC402\OneDrive - University of Pittsburgh\Data","Data path...");
+    dataPath = uigetdir(pwd,'Select animal data folder');
+    if isequal(dataPath,0)
+        error('No data folder selected.');
+    end
     animal = regexp(dataPath,'[A-Z]{2}\d{4}','match','once');
     load(fullfile(dataPath,[animal '_anmlROI_BPNstimTable.mat']))
 end
