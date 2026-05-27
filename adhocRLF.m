@@ -7,8 +7,8 @@
 addpath(genpath(fullfile(fileparts(mfilename('fullpath')),'helperFcns')));
 
 %% params
-matFile  = 'C:\Users\JIC402\Desktop\TOMT1-3/TO0003_anmlROI_BPNstimTable.mat';
-nConsec  = 2;      % min consecutive sig==1 dB levels for inclusion
+matFile  = '/media/DATA/Ophys/Jinbo/AA0067_anmlROI_BPNstimTable.mat';
+nConsec  = 3;      % min consecutive sig==1 dB levels for inclusion
 dBlist   = [];     % [] -> use sort(unique(T.dBampl))
 
 %% load

@@ -1,25 +1,31 @@
 function varargout = inspectSignalObject(varargin)
-% inspectSignalObject plots signal amplitude across time for provided
-% .signal file
+% INSPECTSIGNALOBJECT  Load and plot signal amplitude over time from an Ephus .signal file.
 %
-%           IMPORTANT NOTE:
-%                Ephus @signalObject class library must be added to path
-%                eg. ephus_library
+%   inspectSignalObject()
+%   inspectSignalObject(Name, Value, ...)
+%   y = inspectSignalObject(...)
+%   [y, signalSampleRate] = inspectSignalObject(...)
+%   [y, signalSampleRate, sigFilePath] = inspectSignalObject(...)
 %
+%   With no arguments, opens a file browser to select one or more .signal
+%   files.  For DRC stimuli, colors the plot by contrast level using
+%   getContrastDRCvars.
 %
-%           INPUT:
-%               varargin --> no input: browse .signal file, plot signal
-%                            'signalPath',
-%                            'plotYN',
-%                            'plotNearPT'
+%   NOTE: the Ephus @signalObject class library must be on the MATLAB path
+%   (e.g. ephus_library).
 %
-%           OUTPUT:
-%               y --> signal vector (amplitude over time)
-%               signalSampleRate --> signal sample rate
-%               sigFilePath --> absolute path to signal file
+%   Name-Value Inputs:
+%     'signalPath'  - path to a .signal file (default: false, opens browser)
+%     'plot'        - logical; plot signal (default: true)
+%     'plotNearPT'  - logical; for DRC stim files, zoom plot to ±0.5/1.5 s
+%                     around the pure-tone onset (default: false)
 %
+%   Outputs (all optional):
+%     y                - signal vector (amplitude, in raw units / 1000 = V)
+%     signalSampleRate - sample rate in Hz
+%     sigFilePath      - full path to the loaded .signal file
 %
-%   See also getContrastDRCvars.m
+%   See also getContrastDRCvars
 
 p = inputParser;
 validationFcnPath = @(x) isfile(x) || islogical(x);

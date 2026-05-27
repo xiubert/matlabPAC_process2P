@@ -10,11 +10,11 @@ addpath(genpath(fullfile(fileparts(mfilename('fullpath')),'helperFcns')));
 
 %% params
 matFiles = {
-    'C:\Users\JIC402\Desktop\TOMT1-3/TO0001_anmlROI_BPNstimTable.mat'
-    'C:\Users\JIC402\Desktop\TOMT1-3/TO0002_anmlROI_BPNstimTable.mat'
-    'C:\Users\JIC402\Desktop\TOMT1-3/TO0003_anmlROI_BPNstimTable.mat'
+    '/media/DATA/Ophys/Jinbo/AA0067_anmlROI_BPNstimTable.mat'
+    % '/media/DATA/Ophys/Jinbo/AA####_anmlROI_BPNstimTable.mat'
+    % '/media/DATA/Ophys/Jinbo/AA####_anmlROI_BPNstimTable.mat'
     };
-nConsec = 2;      % min consecutive sig==1 dB levels for inclusion
+nConsec = 3;      % min consecutive sig==1 dB levels for inclusion
 dBlist  = [];     % [] -> use sort(unique(T.dBampl))
 
 %% load & concatenate

@@ -4,7 +4,11 @@
 % define baseline idx for dFF
 % see sROI.TriggerParams, sROI.Stim, sROI.t
 % find(sROI.t==sROI.TriggerParams.stimDelay)
-baselineIDX = [10 20];
+% baselineIDX = [10 20];
+baselineTime = [3 5];
+
+% define tif channel number
+tifChannel = 2;
 
 % select list of tif files to average across
 dataPath = uigetdir('D:');
@@ -22,6 +26,8 @@ try
     %write ROIoutput to tif list
     load(fullfile(tifFileList(1).folder,strrep(tifFileList(1).name,'.tif','_roiOutput.mat')))
     tifFileList(1).nFrames = fluo2p.nFrames;
+    t = fluo2p.t;
+    baselineIDX = [find(t >= baselineTime(1), 1), find(t <= baselineTime(2), 1, 'last')];
     try
         tifFileList(1).frameRate = fluo2p.frameRate;
         tifFileList(1).rawFroi = fluo2p.rawFroi;
@@ -38,7 +44,7 @@ try
         [tifFileList(nTif).rawFroi,tifFileList(nTif).nFrames,...
             tifFileList(nTif).frameRate] = TifROImask2rawFroi(...
             fullfile(tifFileList(nTif).folder,tifFileList(nTif).name),...
-            fluo2p.roi);
+            fluo2p.roi,tifChannel);
          tifFileList(nTif).dFF = dFoFcalc(tifFileList(nTif).rawFroi,...
              baselineIDX,1);
     end
@@ -53,6 +59,8 @@ end
 % Calculate the standard deviation of the dFF responses for error shading
 A = cat(3, tifFileList.dFF);
 figure;
-plot(mean(A,3)')
+plot(t(baselineIDX(1):end), ...
+    mean(A,3)')
 hold on
-plot(mean(mean(A,3),1),'LineWidth',4)
+plot(t(baselineIDX(1):end), ...
+    mean(mean(A,3),1),'LineWidth',4)

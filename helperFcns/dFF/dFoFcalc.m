@@ -1,15 +1,25 @@
 function dFoF = dFoFcalc(rawF,baseIDX,traceDim)
-% dFoFcalc output deltaF/F for a vector, matrix, or cell array of raw F.
-%   dFoF = dFoFcalc(
-%           rawF, --> raw fluorescence as vector, matrix, or cell array
-%           baseIDX, --> [first last] indices of rawF to be used for F0 calculation
-%           traceDim --> dimension along traces
+% DFOFCALC  Compute dF/F from raw fluorescence traces.
 %
-%   Calculates deltaF/F from rawF input with F0 as mean of rawF within
-%   baseIDX indices. dF/F is calculated for each trace. dF/F trace starts
-%   at first baseIDX
+%   dFoF = dFoFcalc(rawF, baseIDX)
+%   dFoF = dFoFcalc(rawF, baseIDX, traceDim)
 %
-%   See also baseIDXfromPTonset.m, pkFcalc.m
+%   Computes (F - F0) / F0 for each trace, where F0 is the mean of rawF
+%   over the baseline window baseIDX(1):baseIDX(2).  The output trace
+%   begins at baseIDX(1) — pre-baseline frames are discarded.
+%
+%   Inputs:
+%     rawF      - raw fluorescence; vector, nTraces x nFrames matrix, or
+%                 cell array of such matrices
+%     baseIDX   - [first last] frame indices defining the F0 baseline window
+%     traceDim  - dimension along which individual traces run:
+%                   1 (default) → traces are rows, frames are columns
+%                   2           → frames are rows, traces are columns
+%
+%   Output:
+%     dFoF - dF/F in the same format as rawF, starting at frame baseIDX(1)
+%
+%   See also baseIDXfromPTonset, pkFcalc
 
 if nargin==2
     traceDim=1;

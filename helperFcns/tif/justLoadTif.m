@@ -1,6 +1,19 @@
-%this function loads a scanimage type tif but ignores metadata
-%this doesn't handle 2 channel tifs
 function justImgData = justLoadTif(TifFile)
+% JUSTLOADTIF  Load all frames from a single-channel .tif, ignoring metadata.
+%
+%   justImgData = justLoadTif(TifFile)
+%
+%   Reads every directory (frame) of a .tif using the low-level Tiff API,
+%   suppressing libtiff header warnings.  Intended for ScanImage .tif files
+%   when metadata is not needed.  Does not support multi-channel .tif files.
+%
+%   Input:
+%     TifFile     - path to a single-channel .tif file
+%
+%   Output:
+%     justImgData - Width x Height x nFrames array of raw pixel values
+%
+%   See also readSCIMtif, splitTifChans
 tifInfo = imfinfo(TifFile);
 nFrames = length(tifInfo);
 warning('off','MATLAB:imagesci:tiffmexutils:libtiffWarning');

@@ -42,7 +42,7 @@ for f = 1:length(pulses)
     if size(pulse, 2) > 1
         % map / multi-pulse file — store all pulse names, sets, and xsg files as cell arrays
         pulses(f).pulseName = {pulse.pulsename};
-        pulses(f).pulseSet  = pulse(1).pulseset;
+        pulses(f).pulseSet  = {pulse.pulseset};
         pulses(f).xsg       = {pulse.curXSG};
     elseif endsWith(pulse.pulsename, {'_1','_2','_3','_4','_5','_6','_7','_8','_9'})
         % single pulse with trailing index — strip it

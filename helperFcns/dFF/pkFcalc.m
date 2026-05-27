@@ -1,23 +1,33 @@
 function [sigPkResp,sig,pkResp,pkIDXsig,pkIDX] = ...
     pkFcalc(Ftrace,frameStart,nFrameWindow,pkPTsigSD)
-% pkFcalc output peak response of input Ftrace within nFrameWindow from frameStart.
-%   
-%   [sigPkResp,sig,pkResp,pkIDXsig,pkIDX] = pkFcalc(
-%           Ftrace, --> fluorescence traces (cell,vector or matrix), 
-%                       assumes traces are along dimension 1
-%           frameStart, --> start frame for peak search
-%           nFrameWindow, --> frames from start frame for peak search
-%           pkPTsigSD --> SD threshold for significant responses
+% PKFCALC  Find peak fluorescence response and flag significant responses.
 %
-%   OUTPUTS:
-%       sigPkResp --> max responses that are pkPTsigSD above mean
-%                       Ftrace before frameStart
-%       sig --> logical array of significant peak responses
-%       pkResp --> max response within search window
-%       pkIDXsig --> index of Ftrace for significant peak responses
-%       pkIDX --> index of Ftrace at which peak response occurs
+%   [sigPkResp, sig, pkResp, pkIDXsig, pkIDX] = pkFcalc(Ftrace, frameStart, nFrameWindow, pkPTsigSD)
 %
-%   See also dFoFcalc.
+%   Searches for the peak value of each trace within the window
+%   [frameStart, frameStart + nFrameWindow - 1].  A response is considered
+%   significant if its peak exceeds the pre-stimulus baseline mean plus
+%   pkPTsigSD * baseline SD (computed over frames 1:frameStart).
+%
+%   NOTE: Ftrace should contain per-cell average traces (e.g. trial-averaged
+%   dF/F), not individual pixel or trial traces.  Significance thresholding
+%   based on baseline SD is not meaningful for single-trial data.
+%
+%   Inputs:
+%     Ftrace        - fluorescence traces; nTraces x nFrames matrix, or a
+%                     cell array of such matrices (traces along dimension 2)
+%     frameStart    - first frame of the post-stimulus search window (1-based)
+%     nFrameWindow  - number of frames in the search window
+%     pkPTsigSD     - significance threshold in units of baseline SD
+%
+%   Outputs:
+%     sigPkResp - peak responses for significant traces only (subset of pkResp)
+%     sig       - nTraces x 1 logical vector; true where peak >= baseline + pkPTsigSD*SD
+%     pkResp    - nTraces x 1 peak response within the search window (all traces)
+%     pkIDXsig  - frame indices of peak within the search window for significant traces
+%     pkIDX     - frame indices of peak within the search window for all traces
+%
+%   See also dFoFcalc, zero2nan
 
 %frame span for peak search
 maxSpan(1) = frameStart;

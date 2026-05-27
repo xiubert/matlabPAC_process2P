@@ -1,17 +1,59 @@
 function [] = roiGUI(varargin)
-% roiGUI  Load ScanImage .tif for roi drawing.
-%   [] = readSCIMtif(varargin)
-%   loads .tif into GUI for drawing and saving ROI
+% roiGUI  Interactive ROI drawing and export for ScanImage .tif stacks.
+% 
+%   roiGUI launches a GUI to browse frames of a ScanImage .tif, draw ROIs
+%   (ellipse or freehand), view mean images, and export ROI masks and
+%   fluorescence traces.
 %
-%   Additional input arguments: 
-%       'inputFileName' --> loads specified .tif file
-%       '1' --> loads specified channel, replace with desired channel number
-%               channel id stored in imHeader
-%       'merge' --> merges image data from 2 channels, assumes red,green
+%   Usage
+%     roiGUI()                      % prompt to select a .tif file
+%     roiGUI(chanID)                % prompt to select specific channel of a .tif file via browser
+%     roiGUI('merge')               % prompt to select a .tif file and merge channels
+%     roiGUI(inputFileName)         % open specified .tif
+%     roiGUI(inputFileName, chanID) % specify channel index (numeric)
+%     roiGUI(..., 'merge')          % load all channels and show merged view
 %
-%   PAC_20200213
+%   Inputs (optional)
+%     inputFileName  char scalar    Full path or name of a ScanImage .tif.
+%     chanID         numeric scalar Channel index to load (default: 2).
+%     'merge'                     Treat file as multi-channel and enable
+%                                 merged view (assumes a two-channel red/green).
 %
-%   See also meanfluoROIvt.m
+%   Outputs / Side effects
+%     No return value. The function:
+%        - creates an interactive figure for ROI drawing and controls,
+%        - saves ROI outputs to <trace>_roiOutput.mat when "Save Output" is used,
+%        - assigns sROI to the base workspace when "Output to Workspace" is used.
+%
+%   Files created/read
+%     - Reads: <inputFileName>.tif and optional <inputFileName>_Pulses.mat or
+%              <inputFileName>_PulseParams.mat (if present).
+%     - Writes: <trace>_roiOutput.mat (or appended numbered file).
+%
+%   Dependencies
+%     Requires the following helper functions (must be on the path):
+%       readSCIMtif, redGreenMerge, dFoFcalc, extractMapPulseParams,
+%       createMaskFromROIobject, getROIstructVertices
+%     Uses Image Processing Toolbox functions: imellipse, imfreehand.
+%
+%   Notes
+%     - Default channel is 2 when a single-channel read is requested.
+%     - loadNext/loadPrev rely on a filename pattern with a zero-padded
+%       numeric group (e.g. ..._00001.tif); if the pattern is not found an
+%       error is thrown.
+%     - Deleted ROIs are tracked in the sROI.roi.deleted field; loading a
+%       ROI set restores ROI objects and labels.
+%
+%   Examples
+%     roiGUI()                                  % prompt for file
+%     roiGUI('C:\data\mouse1_00001.tif', 1)     % open ch.1 of specified file
+%     roiGUI('C:\data\scan.tif', 'merge')       % load both channels and enable merge
+%
+%   See also readSCIMtif, imellipse, imfreehand
+%
+%   Author: PAC
+%   Date: 2020-02-13
+
 
 
 %PAC_20190522 overhaul for new 2P pipeline, removed epifluorescence
@@ -487,7 +529,7 @@ ui.roiGUI.bg.Visible = 'on';
                     'frame',frame,'deleted',deleted);
                 
                 %if the ROI was deleted don't show it on the ROI figure
-                if loadedROI(roiN).deleted == 1
+                if loadedROI(roiN).deleted == true
                     sROI.roi(roiN).object.delete;
                 end
             end
@@ -496,7 +538,7 @@ ui.roiGUI.bg.Visible = 'on';
             %add position callback functions to each ROI so that they can
             %be repositioned and those positions will be saved
             for roiN = 1:length(sROI.roi)
-                if sROI.roi(roiN).deleted == 0
+                if sROI.roi(roiN).deleted == false
                     addNewPositionCallback(sROI.roi(roiN).object,...
                         @(pos) getpos(pos,sROI.roi(roiN).object,roiN));
                 end
@@ -543,7 +585,7 @@ ui.roiGUI.bg.Visible = 'on';
                     ROIvertices = hROI.getVertices;
                 end
                 frame = inputROI.fluo2p.roi(roiN).frame;
-                deleted = 0;
+                deleted = false;
                 sROI.roi(roiN) = struct('object',hROI,...
                     'ID',ID,'pos',pos,'XYvertices',ROIvertices,...
                     'label',text(ui.roiGUI.ax,...
@@ -678,7 +720,6 @@ ui.roiGUI.bg.Visible = 'on';
                     ID = delROIids(roiN);
                     delIDX = find(strcmp(ID,allROI));
                     sROI.roi(delIDX).object.delete;
-                    sROI.roi(delIDX).label.delete;
                     sROI.roi(delIDX).deleted = true;
                 end
                 clear roiN
@@ -1115,7 +1156,7 @@ ui.roiGUI.bg.Visible = 'on';
 %function to get vertices for roiStruct
     function roiStruct = getROIstructVertices(roiStruct)
         for roiN = 1:length(roiStruct)
-            if roiStruct(roiN).deleted==0
+            if roiStruct(roiN).deleted == false
                 if any(strmatch(class(roiStruct(roiN).object),'imellipse'))
                     roiStruct(roiN).XYvertices = roiStruct(roiN).object.getVertices;
                 else
@@ -1134,7 +1175,7 @@ ui.roiGUI.bg.Visible = 'on';
         rawFroi = NaN(nROI,nFrames);
         
         for roiN = 1:length(roiStruct)
-            if roiStruct(roiN).deleted==0
+            if roiStruct(roiN).deleted == false
                 for nFrame = 1:size(img,3)
                     f = img(:,:,nFrame);
                     rawFroi(roiN,nFrame) = mean(f(roiStruct(roiN).mask));

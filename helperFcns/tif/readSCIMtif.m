@@ -1,22 +1,61 @@
-function [img,imHeader,frameRate,motorPos] = ...
-    readSCIMtif(tifFileName,varargin)
-% readSCIMtif  Load ScanImage .tif image data and header.
-%   [img,imHeader,frameRate,motorPos] = readSCIMtif(tifFileName)
-%   loads .tif. If multiple channels, img is a struct of size n channels with channel ID and
-%   image data in each element.
+function [img,imHeader,frameRate,motorPos] = readSCIMtif(tifFileName,varargin)
+% readSCIMtif  Load ScanImage .tif image data and header information.
 %
-%   Additional input arguments: 
-%       'metaOnly' --> loads only image metadata, discards image data
-%       '1' --> loads specified channel, replace with desired channel number
-%               channel id stored in imHeader
+%   [IMG,IMHEADER,FRAMERATE,MOTORPOS] = readSCIMtif(TIFFILENAME)
+%       Read a ScanImage TIFF file and return image data, parsed header,
+%       frame rate, and motor positions. If the file contains multiple
+%       channels, IMG is a struct array with one element per channel:
+%           IMG(i).chanID   % channel identifier (from header)
+%           IMG(i).img      % image volume: height × width × nFrames
+%       If only one channel is present or a single channel is requested,
+%       IMG is a numeric array: height × width × nFrames.
 %
-%       TODO: handle merge
-%       'merge' --> merges image data from 2 channels, assumes red,green
+%   [IMG,IMHEADER,FRAMERATE,MOTORPOS] = readSCIMtif(TIFFILENAME, CHAN)
+%       Load only the numeric channel CHAN (scalar). CHAN must be numeric.
+%       The selected channel ID is stored in IMHEADER.chanID.
 %
-%   PAC_20200213
+%   [IMG,IMHEADER,FRAMERATE,MOTORPOS] = readSCIMtif(TIFFILENAME, 'metaOnly')
+%       Parse and return only header/metadata (IMHEADER, FRAMERATE,
+%       MOTORPOS). IMG is returned empty.
 %
-%   See also justLoadTif.m
-
+%   [IMG,IMHEADER,FRAMERATE,MOTORPOS] = readSCIMtif(TIFFILENAME, 'merge')
+%       (Planned) Merge two channels into a single RGB/combined image
+%       volume. Currently not implemented.
+%
+% Inputs
+%   TIFFILENAME  - string or char scalar with path to .tif file
+%   CHAN         - optional numeric scalar specifying the channel index
+%                  to load (1-based index relative to header channelSave).
+%   'metaOnly'   - optional flag to skip loading image frames.
+%   'merge'      - optional flag indicating channel merge behavior (TODO).
+%
+% Outputs
+%   IMG          - image data (numeric array or struct array as described).
+%   IMHEADER     - parsed ScanImage header structure (fields depend on SI
+%                  version). Includes nFrames, frameRate, hChannels, etc.
+%   FRAMERATE    - scalar frame acquisition rate (Hz).
+%   MOTORPOS     - struct with .relative and .absolute motor positions.
+%
+% Notes and Behavior
+%   - To select a single channel, pass a numeric scalar (not a char or
+%     string). The function detects channel selection by testing for an
+%     element of varargin that is numeric with numel==1.
+%   - If the TIFF was written as split files (imHeader.tifFromSplit) or
+%     contains only one channel, channel selection may be ignored.
+%   - The function supports ScanImage v3 and v5+ metadata formats.
+%   - Warnings from the TIFF reader are suppressed during reading.
+%
+% Examples
+%   % Load all image data and header
+%   [img,hdr,fr,mp] = readSCIMtif('file.tif');
+%
+%   % Load only channel 2
+%   [img,~,~,~] = readSCIMtif('file.tif', 2);
+%
+%   % Read only metadata
+%   [~,hdr,fr,mp] = readSCIMtif('file.tif', 'metaOnly');
+%
+% See also justLoadTif
 
 imginfo = imfinfo(tifFileName);
 
