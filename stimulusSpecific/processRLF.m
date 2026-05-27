@@ -1,4 +1,4 @@
-% adhocRLF_anmls: response-level function across cells pooled from
+% processRLF: response-level function across cells pooled from
 % multiple animals.
 %
 % Loads each animal's anmlROIbyStim table, vertically concatenates them,
