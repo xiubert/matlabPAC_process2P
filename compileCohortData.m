@@ -5,8 +5,16 @@ clearvars;close all;clc;
 %%%%%%%%%%%%%%%%%%%%%%%%%%%  EDIT HERE  %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 cohortName = 'CaMKII';
-outputTableSaveDir = 'C:\Users\JIC402\OneDrive - University of Pittsburgh\Data';
-params.parentPath = 'C:\Users\JIC402\OneDrive - University of Pittsburgh\Data\CaMKII_combined';
+
+outputTableSaveDir = uigetdir(pwd,'Select folder to save output tables');
+if isequal(outputTableSaveDir,0)
+    error('No output folder selected.');
+end
+
+params.parentPath = uigetdir(outputTableSaveDir,'Select parent folder containing animal data');
+if isequal(params.parentPath,0)
+    error('No animal data folder selected.');
+end
 
 params.tableDir = '.';
 params.treatment = 'none';
