@@ -16,13 +16,13 @@ anmlROIbyStim.t_total = rowfun(@(F,fr) ...
 % tBaseLine = [onset-1 onset];
 anmlROIbyStim.t_dFF = rowfun(@(t,onset) ...
     {t(find((t>onset-1),1,'first'):end)},...
-    anmlROIbyStim,'InputVariables',{'t_total','sonset'},...
+    anmlROIbyStim,'InputVariables',{'t_total','BPNsOnset'},...
     'ExtractCellContents',true,'OutputFormat','uniform');
 
 anmlROIbyStim.dFF = rowfun(@(F,t,onset) ...
     {dFoFcalc(F,[find((t>onset-1),1,'first')...
     find((t<=onset),1,'last')],1)},...
-    anmlROIbyStim,'InputVariables',{'SCALEDfissaFroi','t_total','sonset'},...
+    anmlROIbyStim,'InputVariables',{'SCALEDfissaFroi','t_total','BPNsOnset'},...
     'ExtractCellContents',true,'OutputFormat','uniform');
 
 %% combine same sound but different onset
@@ -37,13 +37,13 @@ anmlROIbyStim.dFF_avg = rowfun(@(F) {mean(F)},...
 
 
 %%
-% anmlROIbyStim=anmlROIbyStim(anmlROIbyStim.sonset==1,:);
+% anmlROIbyStim=anmlROIbyStim(anmlROIbyStim.BPNsOnset==1,:);
 pkBPNsigSD=2;
 nFramesPostPulse=2;
 
-resultsTable = rowfun(@(F, fr, sonset, mspulseLen) ...
-    pkFcalc(F,fr*sonset,mspulseLen/1000*fr+nFramesPostPulse,pkBPNsigSD),...
-    anmlROIbyStim,'InputVariables',{'dFF_avg','frameRate','sonset', 'mspulseLen'},...
+resultsTable = rowfun(@(F, fr, BPNsOnset, BPNmsPulseLen) ...
+    pkFcalc(F,fr*BPNsOnset,BPNmsPulseLen/1000*fr+nFramesPostPulse,pkBPNsigSD),...
+    anmlROIbyStim,'InputVariables',{'dFF_avg','frameRate','BPNsOnset', 'BPNmsPulseLen'},...
     'ExtractCellContents',true,'NumOutputs',5,'OutputFormat', 'cell');
 
 anmlROIbyStim.sigPeak = resultsTable(:,1);
@@ -57,7 +57,7 @@ targetROI = '1';      % desired roiID
 targetdB  = 30;     % desired dB
 
 % Find row(s) matching the ROI and dB
-rowMask = (anmlROIbyStim.roiID == targetROI) & (anmlROIbyStim.dBampl == targetdB);
+rowMask = (anmlROIbyStim.roiID == targetROI) & (anmlROIbyStim.BPNdBAmpl == targetdB);
 if ~any(rowMask)
     error('No rows found for roiID=%d and dB=%g', targetROI, targetdB)
 end
@@ -96,7 +96,7 @@ if isempty(rows)
 end
 
 % Get unique dB values in those rows
-dbVals = unique(anmlROIbyStim.dBampl(rows));
+dbVals = unique(anmlROIbyStim.BPNdBAmpl(rows));
 
 % Prepare figure
 figure; hold on;
@@ -106,7 +106,7 @@ colors = cmap;
 for k = 1:numel(dbVals)
     db = dbVals(k);
     % Find row(s) for this ROI and this dB
-    mask = (anmlROIbyStim.roiID == targetROI) & (anmlROIbyStim.dBampl == db);
+    mask = (anmlROIbyStim.roiID == targetROI) & (anmlROIbyStim.BPNdBAmpl == db);
     r = find(mask);
     if isempty(r)
         continue
@@ -138,7 +138,7 @@ grid on;
 hold off;
 %% avg
 % Get unique dB values across ALL cells
-dbVals = unique(anmlROIbyStim.dBampl);
+dbVals = unique(anmlROIbyStim.BPNdBAmpl);
 
 % Prepare figure
 figure; hold on;
@@ -150,7 +150,7 @@ for k = 1:numel(dbVals)
     db = dbVals(k);
     
     % Find all rows matching this dB level for any ROI
-    mask = (anmlROIbyStim.dBampl == db);
+    mask = (anmlROIbyStim.BPNdBAmpl == db);
     rows = find(mask);
     if isempty(rows)
         continue
@@ -188,7 +188,7 @@ hold off;
 %% peak dFF vs dB across cell
 
 % 1) Group and compute stats
-[G, dBvals] = findgroups(anmlROIbyStim.dBampl);      % G groups rows by dB, dBvals are group keys
+[G, dBvals] = findgroups(anmlROIbyStim.BPNdBAmpl);      % G groups rows by dB, dBvals are group keys
 % data=cell2mat(GroupedTbl.sigPeak);
 
 % raw_sigPeak = anmlROIbyStim.sigPeak;        % cell array, some cells empty
@@ -258,7 +258,7 @@ end
 %         continue
 %     end
 %     % use the same numeric dB values and the numeric data array 'data'
-%     x_raw = anmlROIbyStim.dBampl(mask);
+%     x_raw = anmlROIbyStim.BPNdBAmpl(mask);
 %     y_raw = data(mask);
 % 
 %     % map raw dB values to the sorted x positions (dBvals_sorted)

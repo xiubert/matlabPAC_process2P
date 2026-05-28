@@ -11,11 +11,25 @@ anmlROIbyStim.t_dFF = cellfun(@(x) x(1:minLength), ...
 anmlROIbyStim.dFF = cellfun(@(x) x(:, 1:minLength), ...
     anmlROIbyStim.dFF, 'UniformOutput', false);
 
-% Define grouping variables (all non-cell columns except 'sonset', 'Pulse' and 'stimID')
+% Define grouping variables (all non-cell columns except the *sOnset column, 'Pulse' and 'stimID')
 allVars = anmlROIbyStim.Properties.VariableNames;
 isCell = varfun(@iscell, anmlROIbyStim, 'OutputFormat', 'uniform');
 nonCellVars = allVars(~isCell);
-groupVars = setdiff(nonCellVars, {'sonset','Pulse','stimID'}, 'stable');
+
+% Locate the *sOnset column (BPNsOnset, FRAsOnset, etc.). Polymorphic so
+% this function works across stim families that follow the
+% <StimFamily><unit><Quantity> naming convention.
+onsetVars = allVars(endsWith(allVars,'sOnset'));
+if isempty(onsetVars)
+    error('combineDiffOnset:NoOnsetColumn', ...
+        'No *sOnset column found in input table.');
+elseif numel(onsetVars) > 1
+    error('combineDiffOnset:AmbiguousOnsetColumn', ...
+        'Multiple *sOnset columns found (%s); ambiguous.', strjoin(onsetVars,', '));
+end
+onsetVar = onsetVars{1};
+
+groupVars = setdiff(nonCellVars, {onsetVar,'Pulse','stimID'}, 'stable');
 
 % Find unique groups and their row indices
 [uniqueGroups, ~, groupIdx] = unique(anmlROIbyStim(:, groupVars), 'rows');
@@ -29,10 +43,10 @@ for i = 1:numGroups
     rows = find(groupIdx == i);
     subTable = anmlROIbyStim(rows, :);
     
-    % Find the row with the smallest 'sonset'
-    [~, minIdx] = min(subTable.sonset);
-    
-    % Create the base row for this group (using the smallest sonset row)
+    % Find the row with the smallest onset
+    [~, minIdx] = min(subTable.(onsetVar));
+
+    % Create the base row for this group (using the smallest-onset row)
     newRow = subTable(minIdx, :);
     
     % Combine the cell columns for all rows in this group

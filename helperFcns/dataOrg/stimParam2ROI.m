@@ -93,7 +93,7 @@ end
 % SPONT
 %%%
 % Error using tabular/unique (line 39)
-% Unable to group rows using unique values of the table variable 'msStimLen'.  UNIQUE returned an error.
+% Unable to group rows using unique values of the table variable 'SpontMsStimLen'.  UNIQUE returned an error.
 % 
 % Error in anmlROIbyStimTable (line 86)
 % [stimTable,~,ic] = unique(tmpT);

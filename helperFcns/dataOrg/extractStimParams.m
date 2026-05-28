@@ -42,6 +42,13 @@ function stimParams = extractStimParams(triggerParams,pulse)
 %   Notes:
 %     - Parsing is regex-based on the pulse name; expects the naming
 %       conventions used in this lab's Ephus pulse files.
+%
+%   Naming convention:
+%     Stim-param fields follow <StimFamily><unit><Quantity> in PascalCase
+%     (e.g. PTsOnset, PTmsLen, msDRClen). The unit is included when the
+%     value's unit is not self-evident from the quantity name. Mirrors the
+%     BPN convention in extractBPNStimParams.m and the Spont convention in
+%     extractSpontParams.m.
 
 %organizes 'TriggerParams' and 'Stim' into relevant params:
 stimParams.trigDelay = triggerParams.stimDelay;

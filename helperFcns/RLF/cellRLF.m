@@ -7,11 +7,11 @@ function out = cellRLF(cellT,varargin)
 %   Inputs:
 %       cellT   - subtable of an anmlROIbyStim-style table containing all
 %                 rows for ONE cell (one animal+roiID). Must have columns
-%                 'dBampl', 'sig', and 'pkResp'. sig and pkResp may be
+%                 'BPNdBAmpl', 'sig', and 'pkResp'. sig and pkResp may be
 %                 numeric or scalar-in-cell.
 %
 %   Name/Value:
-%       'dBlist'  - dB levels to align the RLF to. Default: sort(unique(cellT.dBampl)).
+%       'dBlist'  - dB levels to align the RLF to. Default: sort(unique(cellT.BPNdBAmpl)).
 %                   Levels missing from cellT are filled with NaN.
 %       'nConsec' - minimum number of consecutive sig==1 levels required for
 %                   the cell to be included. Default: 3.
@@ -42,14 +42,14 @@ dBlist  = p.Results.dBlist;
 nConsec = p.Results.nConsec;
 
 if isempty(dBlist)
-    dBlist = reshape(unique(cellT.dBampl),1,[]);
+    dBlist = reshape(unique(cellT.BPNdBAmpl),1,[]);
 else
     dBlist = reshape(sort(dBlist),1,[]);
 end
 
 sigVec    = unwrapNumCol(cellT.sig);
 pkVec     = unwrapNumCol(cellT.pkResp);
-dBcellVec = cellT.dBampl(:);
+dBcellVec = cellT.BPNdBAmpl(:);
 
 nDB = numel(dBlist);
 RLF     = nan(1,nDB);
