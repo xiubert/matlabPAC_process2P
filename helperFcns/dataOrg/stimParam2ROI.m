@@ -102,8 +102,10 @@ save(fullfile(dataPath,[animal '_stimGroupIDX.mat']),'stimGroupIDX','-v7.3')
 
 %sort pure tone in contrast stims
 if sum(stimGroupIDX.ptStimIDX.tifFileList)>1
-    
-    % get stim params for each tif
+
+    % Build a per-tif stim-parameter table for the PT-in-contrast group:
+    % one row per tif, scalar columns for per-tif params and cell columns
+    % for per-pulse params. Feeds anmlROIbyStimTable's pivot/dedup step.
     tifStimParamTable = stimParams2TifTable(...
         tifFileList.stim(stimGroupIDX.ptStimIDX.tifFileList),dataPath);
     
@@ -126,8 +128,11 @@ end
 
 %BPN
 if sum(stimGroupIDX.BPNStimIDX.tifFileList)>1
-    
-    % get stim params for each tif
+
+    % Build a per-tif stim-parameter table for the BPN group: one row per
+    % tif, scalar columns for per-tif params (trigDelay, ISI, totalPulses)
+    % and cell columns for per-pulse params (BPNsOnset, BPNdBAmpl, ...).
+    % Feeds anmlROIbyStimTable's multi-pulse expansion + dedup.
     tifStimParamTable = stimParams2TifTable(...
         tifFileList.stim(stimGroupIDX.BPNStimIDX.tifFileList),dataPath);
     
@@ -167,8 +172,11 @@ end
 %     Cell array input must be a cell array of character vectors.
 %%%
 if sum(stimGroupIDX.spontStimIDX.tifFileList)>1
-    
-    % get stim params for each tif
+
+    % Build a per-tif stim-parameter table for the Spont group: one row
+    % per tif, scalar columns for per-tif params (trigDelay, ISI,
+    % totalPulses) and a per-pulse SpontMsStimLen cell column. Feeds
+    % anmlROIbyStimTable's multi-pulse expansion + dedup.
     tifStimParamTable = stimParams2TifTable(...
         tifFileList.stim(stimGroupIDX.spontStimIDX.tifFileList),dataPath);
     
@@ -191,6 +199,10 @@ end
 
 %sort contrast change stimulus
 if sum(stimGroupIDX.contrastChangeIDX.tifFileList)>1
+
+    % Build a per-tif stim-parameter table for the contrast-change group:
+    % one row per tif, scalar columns for per-tif params and cell columns
+    % for per-pulse params. Feeds anmlROIbyStimTable's pivot/dedup step.
     dContrastTifParamTable = stimParams2TifTable(...
         tifFileList.stim(stimGroupIDX.contrastChangeIDX.tifFileList),dataPath);
     
