@@ -1,8 +1,66 @@
-%% stimParam2ROI
-%IF HAVE STIM PARAMS in _Pulses.mat files, organize stim output my animal, ROI, stim params
 function [pulseLegend2P,stimGroupIDX,outputTables] = stimParam2ROI(dataPath)
+% stimParam2ROI  Organize one animal's 2P traces by ROI x stim parameters.
+%
+%   [pulseLegend2P,stimGroupIDX,outputTables] = stimParam2ROI(dataPath)
+%
+%   For an animal data folder that already contains moCorROI traces,
+%   tifFileList, and *_Pulses.mat files, this function:
+%     1. Builds pulseLegend2P from the *_Pulses.mat files via
+%        tifPulseLegend2P.
+%     2. Classifies each tif into a stim group based on the pulseSet
+%        name, producing stimGroupIDX.
+%     3. For each stim group with more than one tif, builds a
+%        tifStimParamTable, an anmlROIbyStim table, and a deduplicated
+%        stimTable via stimParams2TifTable + anmlROIbyStimTable, and
+%        saves them to a stim-specific .mat file in dataPath.
+%
+%   Layout of resulting per-stim tables: one row per (ROI, unique-stim)
+%   pair, so all repetitions of a given stim on a given ROI share a row.
+%
+%   Inputs:
+%     dataPath - absolute path to an animal data folder. The animal ID
+%                (pattern '[A-Z]{2}\d{4}', e.g. AA0067) is parsed from the
+%                path and used to locate the required input files:
+%                  <animal>_moCorrROI_*.mat (loads moCorROI)
+%                  <animal>_tifFileList.mat (loads tifFileList)
+%                  *_Pulses.mat (consumed by tifPulseLegend2P)
+%
+%   Outputs:
+%     pulseLegend2P - struct array from tifPulseLegend2P (one entry per
+%                     *_Pulses.mat file). Also saved to
+%                     <animal>_pulseLegend2P.mat.
+%     stimGroupIDX  - struct with one field per stim group, each holding:
+%                       .pulseLegend2P - logical mask into pulseLegend2P
+%                       .tifFileList   - logical mask into tifFileList.stim
+%                     Detected groups (matched against pulse.pulseSet):
+%                       ptStimIDX         - 'PTinContrast'
+%                       BPNStimIDX        - 'BPN'
+%                       spontStimIDX      - 'spont'
+%                       contrastChangeIDX - 'contrastChange'
+%                       pupilReflexIDX    - 'LED trigger'
+%                     Also saved to <animal>_stimGroupIDX.mat.
+%     outputTables  - flat cell array of interleaved name/value pairs
+%                     {'tifStimParamTable', T1, 'anmlROIbyStim', T2, ...}
+%                     spanning every stim group that triggered processing.
+%                     Empty if no group has >1 tif.
+%
+%   Side-effect .mat files written (only for groups with >1 tif):
+%     <animal>_pulseLegend2P.mat
+%     <animal>_stimGroupIDX.mat
+%     <animal>_anmlROI_CGCstimTable.mat    (PTinContrast)
+%     <animal>_anmlROI_BPNstimTable.mat    (BPN)
+%     <animal>_anmlROI_SpontstimTable.mat  (spont)
+%     <animal>_anmlROI_dContrastTable.mat  (contrastChange)
+%
+%   Notes:
+%     - Pupil-reflex tifs are detected and indexed but not currently
+%       processed into a per-stim table.
+%     - The Spont branch has previously surfaced a tabular/unique error
+%       when a non-char cell column made it into the dedup step; the
+%       captured error trace is preserved in-source above the spont
+%       block as a regression hint.
+
 outputTables = cell(0);
-%eg for a given ROI all traces from a given stim param will be in one row
 animal = regexp(dataPath,'[A-Z]{2}\d{4}','match','once');
 
 tmp0 = cellstr(ls(fullfile(dataPath,[animal '_moCorrROI_*.mat'])));

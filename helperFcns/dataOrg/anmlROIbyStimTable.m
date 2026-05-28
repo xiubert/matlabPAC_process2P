@@ -1,8 +1,82 @@
 function [anmlROIbyStim,stimTable] = anmlROIbyStimTable(animal,tifFileListStim,moCorROI,tifStimParamTable)
-%sort responses from all ROI for a given stim
-%into a table of animal ROIs by stim parameters
-
-% trims longer vectors to the smallest length
+% anmlROIbyStimTable  Build a per-(ROI, unique-stim) response table for
+%                     one animal, plus a deduplicated stim parameter table.
+%
+%   [anmlROIbyStim, stimTable] = anmlROIbyStimTable(animal, ...
+%                                tifFileListStim, moCorROI, tifStimParamTable)
+%
+%   Pivots per-tif fluorescence traces into a long-form table keyed by
+%   (animal, roiID, stimID), so all repetitions of a unique stimulus
+%   condition for a given ROI end up vertically concatenated in a single
+%   row's cell entries. Also returns the deduplicated stimulus table,
+%   sorted so 'post' rows precede 'pre' rows on the 'treatment' column.
+%
+%   Inputs:
+%     animal           - animal ID string (e.g. 'AA0067'); replicated into
+%                        every output row.
+%     tifFileListStim  - struct array (the .stim substruct of tifFileList)
+%                        subset to the stim group being processed. Each
+%                        element must carry:
+%                          frameRate           - scalar (Hz)
+%                          rawFroi             - nROI x nFrame
+%                          moCorRawFroi        - nROI x nFrame
+%                          fissaFroi           - (optional) nROI x nFrame
+%                          SCALEDfissaFroi     - (optional) nROI x nFrame
+%                        If fissaFroi is present on the struct, FISSA
+%                        columns are included in the output.
+%     moCorROI         - struct array of motion-corrected ROIs (.ID field
+%                        used as the roiID column).
+%     tifStimParamTable- per-tif stim parameter table from
+%                        stimParams2TifTable. May be single-pulse
+%                        (scalar columns) or multi-pulse (cell columns
+%                        carrying N-by-1 per-pulse values plus a
+%                        totalPulses column with totalPulses>1).
+%
+%   Outputs:
+%     anmlROIbyStim - (nROI * nUniqueStim) x M table:
+%                       animal, roiID, stimID, <stim param columns>,
+%                       frameRate, rawFroi, moCorRawFroi,
+%                       fissaFroi, SCALEDfissaFroi (last two only if
+%                       FISSA inputs were present).
+%                     The *Froi columns are cells holding nRep x nFrame
+%                     matrices (rows = repetitions of the stim on that
+%                     ROI, columns = time).
+%     stimTable     - nUniqueStim x M table: one row per unique stim
+%                     condition, with stim params + frameRate (+ pulseID
+%                     if rawPulse was present on the input table).
+%                     stimID values in anmlROIbyStim index into this
+%                     table after the post-before-pre sort.
+%
+%   Processing steps:
+%     1. Equalize trace lengths: for each of {rawFroi, moCorRawFroi,
+%        fissaFroi, SCALEDfissaFroi} present on tifFileListStim, trim all
+%        per-tif vectors to the shortest length across the set.
+%     2. Strip any 'tif*' columns from tifStimParamTable (provenance
+%        columns not used downstream).
+%     3. Build tmpT: one row per (tif, pulse) pair. Multi-pulse tifs
+%        (totalPulses>1) are expanded by replicating scalar columns and
+%        unpacking N-by-1 cell columns into N rows. Trial-level
+%        identifiers ('trigDelay','ISI','totalPulses') are not replicated.
+%     4. unique(tmpT) -> stimTable + ic mapping. Sort by 'treatment' and
+%        flipud so 'post' precedes 'pre' alphabetically. stimIDX is the
+%        resulting 1..nUniqueStim index per tif.
+%     5. For each stim, gather the cell-array of trial traces per ROI.
+%        Multi-pulse tifs are sliced into per-pulse windows using
+%        frameRate, trigDelay, and ISI before concatenation; single-pulse
+%        tifs are taken whole.
+%     6. Stitch the per-ROI cells back onto TanmlROI (which carries
+%        animal+roiID+stimID + the replicated stim params).
+%
+%   Notes:
+%     - 'rawPulse' is removed from tmpT before dedup so pulse-index
+%       suffixes do not split otherwise-identical stim rows; the
+%       per-trial pulse indices are preserved as a pulseID cell column
+%       on stimTable.
+%     - frameRate is assumed identical across all tifs in tifFileListStim
+%       (the function uses tifFileListStim(1).frameRate for every stim).
+%     - This function errors if the sort-vs-unique reconciliation in the
+%       post/pre flip disagrees ('something went wrong here'); that
+%       indicates a unique/sortrows mismatch on the 'treatment' column.
 
 % list of fields inside stim to equalize
 fields = {'rawFroi','moCorRawFroi','fissaFroi','SCALEDfissaFroi'};
@@ -56,10 +130,10 @@ if ismember('totalPulses', tifStimParamTable.Properties.VariableNames) && any(ti
             replicated = repmat({val}, n, 1);
             tmpS.(name) = [tmpS.(name); replicated];
         end
-        % append cell variables by taking contents of the cell (expected n×1)
+        % append cell variables by taking contents of the cell (expected nï¿½1)
         for c = 1:numel(cellVars)
             name = cellVars{c};
-            cellContents = tifStimParamTable.(name){r}; % should be an n×1 cell
+            cellContents = tifStimParamTable.(name){r}; % should be an nï¿½1 cell
             tmpS.(name) = [tmpS.(name); cellContents];
         end
     end
