@@ -1,6 +1,9 @@
 %%
 if ~exist('dataPath','var')
-    dataPath='C:\Users\JIC402\OneDrive - University of Pittsburgh\Data\AA0068';
+    dataPath = uigetdir('','Select the animal data folder');
+    if isequal(dataPath,0)
+        error('processCGC:noDataPath','No data folder selected.');
+    end
     animal = regexp(dataPath,'[A-Z]{2}\d{4}','match','once');
     load(fullfile(dataPath,[animal '_anmlROI_CGCstimTable.mat']))
 end
