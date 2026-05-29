@@ -1,133 +1,148 @@
-%%
+% processBPN2P  Compute trial-aligned dF/F and peak responses for one
+%               animal's BPN (band-pass noise) session.
+%
+% Workflow:
+%   1. Load <animal>_anmlROI_BPNstimTable_raw.mat (produced by
+%      stimParam2ROI). Resolves dataPath via uigetdir if not in workspace.
+%   2. Compute per-row t_total, t_dFF, dFF using a configurable
+%      pre-onset baseline (baselineSec). Each row's dFF starts at
+%      "baselineSec before that row's own BPNsOnset", so the stim onset
+%      lives at frame ~ frameRate*baselineSec in dFF coords for every
+%      onset value.
+%   3. Merge same-stim, different-onset rows via
+%      combineDiffOnset(baselineSec). The merge onset-aligns the raw F
+%      cells too, so re-running the script on the saved output stays
+%      safe.
+%   4. Trial-average dF/F per row -> dFF_avg.
+%   5. pkFcalc on dFF_avg, with frameStart derived from t_dFF + BPNsOnset
+%      (independent of baselineSec) and nFrameWindow rounded up so
+%      sub-frame pulse lengths don't truncate the search window.
+%   6. Save the processed bundle to <animal>_anmlROI_BPNstimTable.mat
+%      (without the _raw suffix). Re-running this script will overwrite
+%      that file but never the _raw input.
+%
+% Output table adds columns: t_total, t_dFF, dFF, dFF_avg, sigPeak,
+% sig, pkResp.
+
 if ~exist('dataPath','var')
     dataPath = uigetdir(pwd,'Select animal data folder');
     if isequal(dataPath,0)
         error('No data folder selected.');
     end
     animal = regexp(dataPath,'[A-Z]{2}\d{4}','match','once');
-    load(fullfile(dataPath,[animal '_anmlROI_BPNstimTable.mat']))
+    load(fullfile(dataPath,[animal '_anmlROI_BPNstimTable_raw.mat']))
 end
-%%
-anmlROIbyStim.t_total = rowfun(@(F,fr) ...
-    {(1:size(F,2))/fr},...
-    anmlROIbyStim,'InputVariables',{'SCALEDfissaFroi','frameRate'},...
+
+%% Parameters (EDIT IF NEEDED)
+baselineSec      = 1;   % pre-onset baseline (s) for dFF + onset alignment
+pkBPNsigSD       = 2;
+nFramesPostPulse = 2;
+
+%% Per-row time vectors and onset-normalized dF/F
+anmlROIbyStim.t_total = rowfun(@(F,fr) {(1:size(F,2))/fr}, ...
+    anmlROIbyStim,'InputVariables',{'SCALEDfissaFroi','frameRate'}, ...
     'ExtractCellContents',true,'OutputFormat','uniform');
 
-% tBaseLine = [onset-1 onset];
 anmlROIbyStim.t_dFF = rowfun(@(t,onset) ...
-    {t(find((t>onset-1),1,'first'):end)},...
-    anmlROIbyStim,'InputVariables',{'t_total','BPNsOnset'},...
+    {t(find((t>onset-baselineSec),1,'first'):end)}, ...
+    anmlROIbyStim,'InputVariables',{'t_total','BPNsOnset'}, ...
     'ExtractCellContents',true,'OutputFormat','uniform');
 
 anmlROIbyStim.dFF = rowfun(@(F,t,onset) ...
-    {dFoFcalc(F,[find((t>onset-1),1,'first')...
-    find((t<=onset),1,'last')],1)},...
-    anmlROIbyStim,'InputVariables',{'SCALEDfissaFroi','t_total','BPNsOnset'},...
+    {dFoFcalc(F,[find((t>onset-baselineSec),1,'first') ...
+                 find((t<=onset),1,'last')],1)}, ...
+    anmlROIbyStim,'InputVariables',{'SCALEDfissaFroi','t_total','BPNsOnset'}, ...
     'ExtractCellContents',true,'OutputFormat','uniform');
 
-%% combine same sound but different onset
+%% Merge same-sound, different-onset rows (also aligns raw F cells)
+anmlROIbyStim = combineDiffOnset(anmlROIbyStim, baselineSec);
 
-anmlROIbyStim = combineDiffOnset(anmlROIbyStim);
-
-%%
-anmlROIbyStim.dFF_avg = rowfun(@(F) {mean(F)},...
-    anmlROIbyStim,'InputVariables',{'dFF'},...
+%% Trial-average dF/F per row
+anmlROIbyStim.dFF_avg = rowfun(@(F) {mean(F,1,'omitnan')}, ...
+    anmlROIbyStim,'InputVariables',{'dFF'}, ...
     'ExtractCellContents',true,'OutputFormat','uniform');
 
-
-
-%%
-% anmlROIbyStim=anmlROIbyStim(anmlROIbyStim.BPNsOnset==1,:);
-pkBPNsigSD=2;
-nFramesPostPulse=2;
-
-resultsTable = rowfun(@(F, fr, BPNsOnset, BPNmsPulseLen) ...
-    pkFcalc(F,fr*BPNsOnset,BPNmsPulseLen/1000*fr+nFramesPostPulse,pkBPNsigSD),...
-    anmlROIbyStim,'InputVariables',{'dFF_avg','frameRate','BPNsOnset', 'BPNmsPulseLen'},...
-    'ExtractCellContents',true,'NumOutputs',5,'OutputFormat', 'cell');
+%% Peak detection over the stim window
+resultsTable = rowfun(@(F, t_dFF, frameRate, BPNsOnset, BPNmsPulseLen) ...
+    pkFcalc(F, ...
+        find(t_dFF >= BPNsOnset, 1, 'first'), ...
+        ceil(BPNmsPulseLen/1000*frameRate) + nFramesPostPulse, ...
+        pkBPNsigSD), ...
+    anmlROIbyStim, ...
+    'InputVariables',{'dFF_avg','t_dFF','frameRate','BPNsOnset','BPNmsPulseLen'}, ...
+    'ExtractCellContents',true,'NumOutputs',5,'OutputFormat','cell');
 
 anmlROIbyStim.sigPeak = resultsTable(:,1);
 anmlROIbyStim.sig     = resultsTable(:,2);
 anmlROIbyStim.pkResp  = resultsTable(:,3);
-%%
-save(fullfile(dataPath,[animal '_anmlROI_BPNstimTable.mat']),"anmlROIbyStim",'-append');
-%%
-% Inputs (set these)
-targetROI = '1';      % desired roiID
-targetdB  = 30;     % desired dB
 
-% Find row(s) matching the ROI and dB
+%% Save processed bundle (fresh save; never touches the _raw input)
+save(fullfile(dataPath,[animal '_anmlROI_BPNstimTable.mat']), ...
+    'anmlROIbyStim','stimTable','tifStimParamTable','dataPath','-v7.3');
+
+%% --- Plot 1: single ROI, single dB, all reps + mean ---
+targetROI = '1';
+targetdB  = 30;
+
 rowMask = (anmlROIbyStim.roiID == targetROI) & (anmlROIbyStim.BPNdBAmpl == targetdB);
 if ~any(rowMask)
-    error('No rows found for roiID=%d and dB=%g', targetROI, targetdB)
+    error('No rows found for roiID=%s and dB=%g', targetROI, targetdB)
 end
 
 r = find(rowMask,1);
 
-% Extract the cell arrays of repeated measurements (n-by-1 cell)
-timeMat = anmlROIbyStim.t_dFF{r};   % expected: n-by-1 cell, each cell m-by-1
-dffMat  = anmlROIbyStim.dFF{r};    % same shape
+% t_dFF{r} is a 1 x nFrames row vector; dFF{r} is nReps x nFrames; dFF_avg{r} is 1 x nFrames.
+timeMat = anmlROIbyStim.t_dFF{r};
+dffMat  = anmlROIbyStim.dFF{r};
 dffMean = anmlROIbyStim.dFF_avg{r};
 
-
-% Plot all repetitions and the average
 figure;
 hold on;
-plot(timeMat, dffMat, 'Color', [0.7 0.7 0.9]);        % thin light lines for individual repetitions
-plot(timeMat, dffMean, '-k', 'LineWidth', 2);         % thick black line for mean
+plot(timeMat, dffMat, 'Color', [0.7 0.7 0.9]);
+plot(timeMat, dffMean, '-k', 'LineWidth', 2);
 xline(1,'--','BPN');
 xline(1.4,'--');
 hold off;
 xlabel('Time (s)');
 ylabel('dF/F');
-title(sprintf('roiID=%d   dB=%g   %d repetitions', targetROI, targetdB, size(dffMat,2)));
+title(sprintf('roiID=%s   dB=%g   %d repetitions', targetROI, targetdB, size(dffMat,1)));
 legend({'Individual measurement','Average'});
 grid on;
 
-%%
-% average responses (dFF) for a given cell across sound levels
-% Inputs
-targetROI = '2';   % desired roiID
+%% --- Plot 2: single ROI, all dB, mean +/- SEM per dB ---
+targetROI = '2';
 
-% Select rows for that ROI
 rows = find(anmlROIbyStim.roiID == targetROI);
 if isempty(rows)
-    error('No rows found for roiID=%d', targetROI)
+    error('No rows found for roiID=%s', targetROI)
 end
 
-% Get unique dB values in those rows
 dbVals = unique(anmlROIbyStim.BPNdBAmpl(rows));
 
-% Prepare figure
 figure; hold on;
 cmap = jet(numel(dbVals));
 colors = cmap;
 
 for k = 1:numel(dbVals)
     db = dbVals(k);
-    % Find row(s) for this ROI and this dB
     mask = (anmlROIbyStim.roiID == targetROI) & (anmlROIbyStim.BPNdBAmpl == db);
     r = find(mask);
     if isempty(r)
         continue
     end
-    
+
     timeMat = anmlROIbyStim.t_dFF{r};
     dffMat  = anmlROIbyStim.dFF{r};
 
-    % Compute mean and SEM across repetitions (columns)
     mu  = mean(dffMat, 1, 'omitnan');
     sem = std(dffMat, 0, 1, 'omitnan') ./ sqrt(sum(~isnan(dffMat),1));
 
-    % Plot shaded SEM band
-    [hPatch,hPlot] =fillSEMplot(timeMat,mu,sem,colors(k,:),colors(k,:));
-    set(hPatch, 'FaceAlpha', 0.25)%transparency of SEM band
-    set(hPlot, 'LineWidth', 1.8)%thickness of the mean line
-    % optional: store handles for legend
+    [hPatch,hPlot] = fillSEMplot(timeMat,mu,sem,colors(k,:),colors(k,:));
+    set(hPatch, 'FaceAlpha', 0.25)
+    set(hPlot, 'LineWidth', 1.8)
     hLine(k) = plot(NaN, NaN, 'Color', colors(k,:), 'LineWidth', 1.8); %#ok<SAGROW>
 end
 
-% Finalize plot
 xline(1,'--','BPN');
 xline(1.4,'--');
 xlabel('Time (s)');
@@ -136,46 +151,37 @@ title(sprintf('ROI %s: average dF/F per dB', targetROI));
 legend(hLine, arrayfun(@(v) sprintf('%d dB', v), dbVals, 'UniformOutput', false), 'Location', 'best');
 grid on;
 hold off;
-%% avg
-% Get unique dB values across ALL cells
+
+%% --- Plot 3: population, all ROIs, pooled-trial SEM per dB ---
 dbVals = unique(anmlROIbyStim.BPNdBAmpl);
 
-% Prepare figure
 figure; hold on;
 cmap = jet(numel(dbVals));
 colors = cmap;
-hLine = gobjects(numel(dbVals), 1); % Preallocate for legend
+hLine = gobjects(numel(dbVals), 1);
 
 for k = 1:numel(dbVals)
     db = dbVals(k);
-    
-    % Find all rows matching this dB level for any ROI
     mask = (anmlROIbyStim.BPNdBAmpl == db);
     rows = find(mask);
     if isempty(rows)
         continue
     end
-    
-    % Extract time vector from the first matching row
-    timeMat = anmlROIbyStim.t_dFF{rows(1)};
-    
-    % Vertically concatenate dFF trial matrices from all cells
-    allDffCell = anmlROIbyStim.dFF(rows);
-    dffMat = vertcat(allDffCell{:}); 
 
-    % Compute mean and SEM across all combined trials (columns)
+    timeMat = anmlROIbyStim.t_dFF{rows(1)};
+
+    allDffCell = anmlROIbyStim.dFF(rows);
+    dffMat = vertcat(allDffCell{:});
+
     mu  = mean(dffMat, 1, 'omitnan');
     sem = std(dffMat, 0, 1, 'omitnan') ./ sqrt(sum(~isnan(dffMat), 1));
 
-    % Plot shaded SEM band
-    [hPatch,hPlot] =fillSEMplot(timeMat,mu,sem,colors(k,:),colors(k,:));
-    set(hPatch, 'FaceAlpha', 0.25)%transparency of SEM band
-    set(hPlot, 'LineWidth', 1.8)%thickness of the mean line
-    % Store handle for legend entry
-    hLine(k) = plot(NaN, NaN, 'Color', colors(k,:), 'LineWidth', 1.8); 
+    [hPatch,hPlot] = fillSEMplot(timeMat,mu,sem,colors(k,:),colors(k,:));
+    set(hPatch, 'FaceAlpha', 0.25)
+    set(hPlot, 'LineWidth', 1.8)
+    hLine(k) = plot(NaN, NaN, 'Color', colors(k,:), 'LineWidth', 1.8);
 end
 
-% Finalize plot
 xline(1, '--', 'BPN');
 xline(1.4, '--');
 xlabel('Time (s)');
@@ -185,50 +191,34 @@ legend(hLine, arrayfun(@(v) sprintf('%d dB', v), dbVals, 'UniformOutput', false)
 grid on;
 hold off;
 
-%% peak dFF vs dB across cell
+%% --- Plot 4: peak dF/F vs dB across cells ---
+[G, dBvals] = findgroups(anmlROIbyStim.BPNdBAmpl);
 
-% 1) Group and compute stats
-[G, dBvals] = findgroups(anmlROIbyStim.BPNdBAmpl);      % G groups rows by dB, dBvals are group keys
-% data=cell2mat(GroupedTbl.sigPeak);
-
-% raw_sigPeak = anmlROIbyStim.sigPeak;        % cell array, some cells empty
 raw_sigPeak = anmlROIbyStim.pkResp;
-% n = numel(c);
-% data = NaN(n,1);
-% nonEmpty = ~cellfun(@isempty, c);
-% if any(nonEmpty)
-%     data(nonEmpty) = cell2mat(c(nonEmpty));
-% end
+
 if iscell(raw_sigPeak)
-    % Convert cell to numeric, replacing empties with NaN
     data = cellfun(@(x) double(reshape(x,[],1)), raw_sigPeak, 'UniformOutput', false);
-    % If each cell has only 1 value, convert to vector
     data = cell2mat(cellfun(@(x) [x; NaN(1-numel(x),1)], data, 'UniformOutput', false));
 else
     data = double(raw_sigPeak);
 end
 
-mu = splitapply(@(x) mean(x,'omitnan'), data, G);     % mean per dB
-n  = splitapply(@(x) sum(~isnan(x)), data, G);    % counts per dB
-sd = splitapply(@(x) std(x,'omitnan'),  data, G);     % std per dB
-sem = sd ./ sqrt(n);                                   % SEM per dB
+mu = splitapply(@(x) mean(x,'omitnan'), data, G);
+n  = splitapply(@(x) sum(~isnan(x)), data, G);
+sd = splitapply(@(x) std(x,'omitnan'),  data, G);
+sem = sd ./ sqrt(n);
 
-% Sort dB values (optional) to ensure increasing x positions
 [dBvals_sorted, idx] = sort(dBvals);
 mu = mu(idx);
 sem = sem(idx);
 
-% 2) Bar plot with error bars
 figure;
 hb = bar(dBvals_sorted, mu, 'FaceColor',[0.8 0.8 0.8]);
 hold on;
-% errorbars: use errorbar with LineStyle 'none'
 he = errorbar(dBvals_sorted, mu, sem, 'k', 'LineStyle', 'none', 'LineWidth',1);
 
-% 3) Overlay individual data points (jittered horizontally)
-% Extract MeansigPeak per group in sorted order
 pointsByGroup = splitapply(@(x) {x}, data, G);
-pointsByGroup = pointsByGroup(idx);   % reorder to match sorted dB
+pointsByGroup = pointsByGroup(idx);
 
 markerColor = [0 0.2 0.6];
 for k = 1:numel(dBvals_sorted)
@@ -238,49 +228,18 @@ for k = 1:numel(dBvals_sorted)
     if mcount == 0
         continue
     end
-    % jitter width: small fraction of spacing between dB values (or fixed)
     if numel(dBvals_sorted) > 1
-        dx = 0.15 * min(diff(dBvals_sorted)); % scale with spacing
+        dx = 0.15 * min(diff(dBvals_sorted));
     else
-        dx = 0.15; % fallback
+        dx = 0.15;
     end
     jitter = (rand(mcount,1)*2-1) * dx;
     xs = x0 + jitter;
-    % plot individual points
     scatter(xs, pts, 36, 'MarkerEdgeColor', markerColor, ...
         'MarkerFaceColor', markerColor, 'MarkerFaceAlpha', 0.6);
 end
-% % 3.5) Connect points that belong to the same roiID
-% roiIDs = unique(anmlROIbyStim.roiID);
-% for iR = 1:numel(roiIDs)
-%     mask = (anmlROIbyStim.roiID == roiIDs(iR));
-%     if nnz(mask) <= 1
-%         continue
-%     end
-%     % use the same numeric dB values and the numeric data array 'data'
-%     x_raw = anmlROIbyStim.BPNdBAmpl(mask);
-%     y_raw = data(mask);
-% 
-%     % map raw dB values to the sorted x positions (dBvals_sorted)
-%     [found, loc] = ismember(x_raw, dBvals_sorted);
-%     if ~all(found)
-%         % if some dB values are missing from dBvals_sorted, skip those points
-%         loc = loc(found);
-%         y_raw = y_raw(found);
-%     end
-%     xplot = dBvals_sorted(loc);
-% 
-%     % sort by x (in case dB order differs)
-%     [xplot, sidx] = sort(xplot);
-%     yplot = y_raw(sidx);
-% 
-%     % draw thin semi-muted line connecting this ROI's points
-%     plot(xplot, yplot, '-', 'Color', [0.4 0.4 0.4], 'LineWidth', 0.8);
-% end
-% 4) Labels and aesthetics
+
 xlabel('Sound level (dB)');
 ylabel('peak dF/F');
-% title('MeansigPeak by dB with SEM and individual data points');
 box on;
 hold off;
-

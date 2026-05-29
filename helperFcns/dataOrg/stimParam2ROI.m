@@ -47,10 +47,14 @@ function [pulseLegend2P,stimGroupIDX,outputTables] = stimParam2ROI(dataPath)
 %   Side-effect .mat files written (only for groups with >1 tif):
 %     <animal>_pulseLegend2P.mat
 %     <animal>_stimGroupIDX.mat
-%     <animal>_anmlROI_CGCstimTable.mat    (PTinContrast)
-%     <animal>_anmlROI_BPNstimTable.mat    (BPN)
-%     <animal>_anmlROI_SpontstimTable.mat  (spont)
-%     <animal>_anmlROI_dContrastTable.mat  (contrastChange)
+%     <animal>_anmlROI_CGCstimTable.mat      (PTinContrast)
+%     <animal>_anmlROI_BPNstimTable_raw.mat  (BPN; _raw marks the
+%       pre-processBPN2P state. processBPN2P loads this, computes dFF
+%       and peak responses, then writes the processed bundle to
+%       <animal>_anmlROI_BPNstimTable.mat. Keeping the two artifacts
+%       distinct avoids re-run mutation of the raw table.)
+%     <animal>_anmlROI_SpontstimTable.mat    (spont)
+%     <animal>_anmlROI_dContrastTable.mat    (contrastChange)
 %
 %   Notes:
 %     - Pupil-reflex tifs are detected and indexed but not currently
@@ -63,8 +67,12 @@ function [pulseLegend2P,stimGroupIDX,outputTables] = stimParam2ROI(dataPath)
 outputTables = cell(0);
 animal = regexp(dataPath,'[A-Z]{2}\d{4}','match','once');
 
-tmp0 = cellstr(ls(fullfile(dataPath,[animal '_moCorrROI_*.mat'])));
-tmp = load(fullfile(dataPath,tmp0{1}),...
+% Use dir() instead of ls() for cross-platform filename listing: on
+% Linux ls(absPath) returns absolute paths, which then double up when
+% wrapped in fullfile(dataPath, ...) on the next line. dir() returns
+% basenames in .name, so the fullfile wrap stays correct everywhere.
+tmp0 = dir(fullfile(dataPath,[animal '_moCorrROI_*.mat']));
+tmp = load(fullfile(dataPath,tmp0(1).name),...
     'moCorROI');
 moCorROI = tmp.moCorROI;
 clear tmp*
@@ -148,7 +156,7 @@ if sum(stimGroupIDX.BPNStimIDX.tifFileList)>1
     outputTables{end+1} = 'stimTable';
     outputTables{end+1} = stimTable;
     
-    save(fullfile(dataPath,[animal '_anmlROI_BPNstimTable.mat']),...
+    save(fullfile(dataPath,[animal '_anmlROI_BPNstimTable_raw.mat']),...
         'anmlROIbyStim','stimTable','tifStimParamTable',...
         'dataPath','-v7.3')
 end
