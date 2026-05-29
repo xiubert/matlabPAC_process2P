@@ -51,52 +51,15 @@ anmlROIbyStim.t_total = rowfun(@(F,fr,trigDelay) ...
     {(1:size(F,2))/fr-trigDelay},...
     anmlROIbyStim,'InputVariables',{'SCALEDfissaFroi','frameRate','trigDelay'},...
     'ExtractCellContents',true,'OutputFormat','uniform');
-% anmlROIbyStim.F_avg = rowfun(@(F) ...
-%     {mean(F)},...
-%     anmlROIbyStim,'InputVariables',{'SCALEDfissaFroi'},...
-%     'ExtractCellContents',true,'OutputFormat','uniform');
 
-%% Plot rawF
+%% Setup
 anmlROIbyStim.roiID = string(strtrim(cellstr(anmlROIbyStim.roiID)));
 roiList = unique(anmlROIbyStim.roiID, 'stable');
-ROIperFig = 9;
 remROIplotNo = rem(nCell,ROIperFig);
 roiFigNo = floor(nCell/ROIperFig)+(remROIplotNo>=1);
 dBdeltaList = unique(stimTable.dBdelta);
 ndBdelta=length(dBdeltaList);
-% %initialize subplots for multiple ROI per fig
-% for roiFigN = 1:roiFigNo
-%     figure;
-%     title('raw F responses for each ROI')
-%     for roiSubPlotN = 1:ROIperFig
-%         curROIno = roiFigN*ROIperFig - ROIperFig + roiSubPlotN;
-%         if curROIno <= nCell
-%             subplot(3,3,roiSubPlotN);
-%             roi=roiList(curROIno);
-%             rows=anmlROIbyStim(anmlROIbyStim.roiID==roi,:);
-%             hold on;
-%             label=strings(height(rows));
-%             for r=1:height(rows)
-%                 x=rows.t_total{r};
-%                 y=rows.F_avg{r};
-%                 plot(x,y);
-%                 if rows.dBdelta(r) == dBdeltaList(1)
-%                     label(r)='Low contrast';
-%                 elseif rows.dBdelta(r) == dBdeltaList(2)
-%                     label(r)='High contrast';
-%                 end
-%             end
-%             xlabel('time/s')
-%             ylabel('raw F')
-%             xline(2,'--','pure tone')
-%             hold off;
-%             title('ROI'+string(curROIno));
-%             legend(label(1), label(2))
-%         end
-%         clear curROIno
-%     end
-%     clear roiSubPlotN
-% end
+% (raw-F per-ROI diagnostic plot moved to the APPENDIX section at end of file)
 %% dFF re DRC
 anmlROIbyStim.t_dFF_DRC = rowfun(@(t) ...
     {t(find((t>=tBaseDRC(1)),1,'first'):end)},...
@@ -370,3 +333,53 @@ if ndBdelta == 2
 end
 
 hold off;
+
+%% ========================== APPENDIX ==========================
+% Optional QC plots, not part of the standard analysis. Opt-in via toggle so
+% a normal script run does not spawn many figures.
+
+%% APPENDIX: raw-F per-ROI diagnostic
+% Plots raw (un-normalized) average fluorescence per ROI, ROIperFig per
+% figure (3x3), one trace per contrast. Useful for spotting bleaching/motion
+% artifacts that dF/F normalization would hide.
+runRawFdiagnostic = false;   % set true to generate the raw-F QC figures
+
+if runRawFdiagnostic
+    % raw F averaged across stim repetitions (1 x nFrames per row)
+    anmlROIbyStim.F_avg = rowfun(@(F) ...
+        {mean(F,1,'omitnan')},...
+        anmlROIbyStim,'InputVariables',{'SCALEDfissaFroi'},...
+        'ExtractCellContents',true,'OutputFormat','uniform');
+
+    for roiFigN = 1:roiFigNo
+        figure('Name','raw F responses for each ROI');
+        for roiSubPlotN = 1:ROIperFig
+            curROIno = roiFigN*ROIperFig - ROIperFig + roiSubPlotN;
+            if curROIno <= nCell
+                subplot(3,3,roiSubPlotN);
+                roi=roiList(curROIno);
+                rows=anmlROIbyStim(anmlROIbyStim.roiID==roi,:);
+                hold on;
+                label=strings(height(rows),1);
+                for r=1:height(rows)
+                    x=rows.t_total{r};
+                    y=rows.F_avg{r};
+                    plot(x,y);
+                    if rows.dBdelta(r) == dBdeltaList(1)
+                        label(r)='Low contrast';
+                    elseif rows.dBdelta(r) == dBdeltaList(2)
+                        label(r)='High contrast';
+                    end
+                end
+                xlabel('time/s')
+                ylabel('raw F')
+                xline(PTonsetSec,'--','pure tone')
+                hold off;
+                title('ROI'+string(curROIno));
+                legend(label)
+            end
+            clear curROIno
+        end
+        clear roiSubPlotN
+    end
+end
