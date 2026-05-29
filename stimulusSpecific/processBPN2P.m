@@ -32,6 +32,9 @@ if ~exist('dataPath','var')
     animal = regexp(dataPath,'[A-Z]{2}\d{4}','match','once');
     load(fullfile(dataPath,[animal '_anmlROI_BPNstimTable_raw.mat']))
 end
+if ~exist('animal','var')
+    animal = regexp(dataPath,'[A-Z]{2}\d{4}','match','once');
+end
 
 %% Parameters (EDIT IF NEEDED)
 baselineSec      = 1;   % pre-onset baseline (s) for dFF + onset alignment
@@ -95,13 +98,15 @@ r = find(rowMask,1);
 timeMat = anmlROIbyStim.t_dFF{r};
 dffMat  = anmlROIbyStim.dFF{r};
 dffMean = anmlROIbyStim.dFF_avg{r};
+stimOnSec  = anmlROIbyStim.BPNsOnset(r);
+stimOffSec = stimOnSec + anmlROIbyStim.BPNmsPulseLen(r)/1000;
 
 figure;
 hold on;
 plot(timeMat, dffMat, 'Color', [0.7 0.7 0.9]);
 plot(timeMat, dffMean, '-k', 'LineWidth', 2);
-xline(1,'--','BPN');
-xline(1.4,'--');
+xline(stimOnSec,'--','BPN');
+xline(stimOffSec,'--');
 hold off;
 xlabel('Time (s)');
 ylabel('dF/F');
@@ -143,8 +148,11 @@ for k = 1:numel(dbVals)
     hLine(k) = plot(NaN, NaN, 'Color', colors(k,:), 'LineWidth', 1.8); %#ok<SAGROW>
 end
 
-xline(1,'--','BPN');
-xline(1.4,'--');
+% All rows for this ROI share the same BPNsOnset / BPNmsPulseLen post-merge.
+stimOnSec  = anmlROIbyStim.BPNsOnset(rows(1));
+stimOffSec = stimOnSec + anmlROIbyStim.BPNmsPulseLen(rows(1))/1000;
+xline(stimOnSec,'--','BPN');
+xline(stimOffSec,'--');
 xlabel('Time (s)');
 ylabel('dF/F');
 title(sprintf('ROI %s: average dF/F per dB', targetROI));
@@ -182,8 +190,12 @@ for k = 1:numel(dbVals)
     hLine(k) = plot(NaN, NaN, 'Color', colors(k,:), 'LineWidth', 1.8);
 end
 
-xline(1, '--', 'BPN');
-xline(1.4, '--');
+% All rows share BPNsOnset/BPNmsPulseLen after combineDiffOnset's min(onset)
+% normalization; take from any row.
+stimOnSec  = anmlROIbyStim.BPNsOnset(1);
+stimOffSec = stimOnSec + anmlROIbyStim.BPNmsPulseLen(1)/1000;
+xline(stimOnSec, '--', 'BPN');
+xline(stimOffSec, '--');
 xlabel('Time (s)');
 ylabel('dF/F');
 title('All ROIs: Population Average dF/F per dB');

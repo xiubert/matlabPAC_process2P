@@ -61,6 +61,20 @@ elseif numel(onsetVars) > 1
 end
 onsetVar = onsetVars{1};
 
+% Guard: baselineSec must not exceed any row's onset, otherwise dFoFcalc
+% upstream silently fell back to a shorter baseline for those rows and
+% the per-row trim below cannot fully onset-align them — leaving the
+% vertcat'd raw F and dFF stim-misaligned across sub-rows.
+minOnset = min(anmlROIbyStim.(onsetVar));
+if baselineSec > minOnset
+    error('combineDiffOnset:BaselineExceedsMinOnset', ...
+        ['baselineSec (%g s) > min(%s) (%g s); ' ...
+         'cannot onset-align rows whose onset is shorter than the ' ...
+         'requested baseline. Reduce baselineSec or filter the table ' ...
+         'to rows with onset >= baselineSec.'], ...
+        baselineSec, onsetVar, minOnset);
+end
+
 %% (a) trim t_dFF / dFF to common minLength — only if present
 if ismember('t_dFF', allVars) && ismember('dFF', allVars)
     t_lengths = cellfun(@length, anmlROIbyStim.t_dFF);
