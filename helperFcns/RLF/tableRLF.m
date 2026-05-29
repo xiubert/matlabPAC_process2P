@@ -5,14 +5,14 @@ function out = tableRLF(T,varargin)
 %   out = tableRLF(T,'cellIDvars',{'animal','roiID'},'dBlist',[],'nConsec',3)
 %
 %   Inputs:
-%       T   - anmlROIbyStim-style table with columns dBampl, sig, pkResp,
+%       T   - anmlROIbyStim-style table with columns BPNdBAmpl, sig, pkResp,
 %             plus any columns identifying unique cells (default
 %             {'animal','roiID'}).
 %
 %   Name/Value:
 %       'cellIDvars' - cellstr of columns that uniquely identify a cell.
 %                      Default {'animal','roiID'}.
-%       'dBlist'     - dB levels to align to. Default: sort(unique(T.dBampl)).
+%       'dBlist'     - dB levels to align to. Default: sort(unique(T.BPNdBAmpl)).
 %       'nConsec'    - min consecutive sig==1 levels for inclusion. Default 3.
 %
 %   Output (struct):
@@ -41,7 +41,7 @@ dBlist     = p.Results.dBlist;
 nConsec    = p.Results.nConsec;
 
 if isempty(dBlist)
-    dBlist = reshape(unique(T.dBampl),1,[]);
+    dBlist = reshape(unique(T.BPNdBAmpl),1,[]);
 else
     dBlist = reshape(sort(dBlist),1,[]);
 end

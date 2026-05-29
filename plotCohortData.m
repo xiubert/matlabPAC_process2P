@@ -3,13 +3,13 @@
 %% LOAD DATA
 clearvars;close all;clc;
 
-load('D:\Data\CaMKII_dataTable.mat')
-load('D:\Data\CaMKII_params.mat')
+load('C:\Users\JIC402\OneDrive - University of Pittsburgh\Data\CaMKII_combined\CaMKII_dataTable.mat')
+load('C:\Users\JIC402\OneDrive - University of Pittsburgh\Data\CaMKII_combined\CaMKII_params.mat')
 
 %% dFF
 % %{
 clc; clearvars -except Tinput params
-params.permIters = 100000;
+params.permIters = 100000; 
 tBaseDRC = [-1.2 0];
 tBasePT{1} = [0.2 0.5];
 tBasePT{2} = [1 2];

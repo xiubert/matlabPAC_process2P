@@ -32,7 +32,7 @@ dataPath = uigetdir(".","Data path...");
 if ~isfolder(dataPath)
     error('Data path not found')
 end
-dList = dir(dataPath);
+
 try
     animal = regexp(dataPath,'[A-Z]{2}\d{4}','match','once');
     if isempty(animal)
@@ -113,18 +113,20 @@ if ~(exist(outputPath,'dir')==7)
     mkdir(outputPath)
 end
 
-% If tifs contain multiple channels (e.g. GCaMP + tdTomato), extract only
-% channel 2 (functional channel) so that NoRMCorre and FISSA receive
-% single-channel input.  Original multi-channel tifs are moved to rawMergedTifs/.
-[img,tmpHeader] = readSCIMtif(fullfile(tifList.(moCorN{1})(1).folder,...
-    tifList.(moCorN{1})(1).name));
-%{
+% If tifs contain multiple channels (e.g. tdTomato + GCaMP), extract only
+% the functional channel so that NoRMCorre and FISSA receive single-channel
+% input. Channel 1 = redImg (e.g. tdTomato), channel 2 = greenImg (e.g. GCaMP).
+% Original multi-channel tifs are moved to rawMergedTifs/.
+[~,tmpHeader] = readSCIMtif(fullfile(tifList.(moCorN{1})(1).folder,...
+    tifList.(moCorN{1})(1).name),'metaOnly');
 if isfield(tmpHeader,'hChannels') && ...
-        numel(tmpHeader.hChannels.channelSave)>1 && ...
-        isstruct(img)
+        numel(tmpHeader.hChannels.channelSave)>1
+    funcChan = str2double(inputdlg(...
+        'Functional channel to extract (1 = redImg, 2 = greenImg):',...
+        'Channel select',[1 60],{'2'}));
     splitTifs = cell(length(tifFiles),1);
     for tifM = 1:length(tifFiles)
-        splitTifs(tifM) = splitTifChans(fullfile(tifFiles(tifM).folder,tifFiles(tifM).name),2);
+        splitTifs(tifM) = splitTifChans(fullfile(tifFiles(tifM).folder,tifFiles(tifM).name),funcChan);
     end
     if ~(exist(fullfile(tifFiles(1).folder,'rawMergedTifs'),'dir')==7)
         mkdir(fullfile(tifFiles(1).folder,'rawMergedTifs'))
@@ -138,8 +140,6 @@ if isfield(tmpHeader,'hChannels') && ...
             fullfile(tifFiles(tifM).folder,tifFiles(tifM).name))
     end
 end
-%}
-
 %motion correction
 for k = 1:length(moCorN)
     %concatenate tifs

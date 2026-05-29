@@ -1,5 +1,54 @@
 function stimParams = extractStimParams(triggerParams,pulse)
-%write in DRC logic
+% extractStimParams  Parse stimulus parameters from a pulse name string.
+%
+%   stimParams = extractStimParams(triggerParams, pulse)
+%
+%   Parses the pulse.pulsename string and the triggerParams struct into a
+%   stimParams struct with the stimulus parameters used downstream for
+%   pure-tone (PT) and dynamic random chord (DRC) stimuli.
+%
+%   Inputs:
+%     triggerParams - struct with at least field:
+%                       stimDelay  - stimulus delay (s)
+%     pulse         - struct with fields:
+%                       pulsename  - pulse name string encoding params
+%                                    (e.g. '..._8000Hz_..._70dB_..._100ms_at_1s')
+%                       pulseset   - pulse set name (used for DRC sEach
+%                                    length adjustment)
+%
+%   Output fields (always populated):
+%     trigDelay - stimulus delay (s), copied from triggerParams.stimDelay
+%     rawPulse  - full pulse.pulsename (incl. any trailing _N index)
+%     Pulse     - pulse name with trailing _N stripped
+%     PTfreq    - pure-tone frequency (Hz); parsed from '####Hz' or
+%                 'stim_##kHz_' patterns
+%     PTampl    - pure-tone amplitude (dB SPL), parsed from '_##dB'
+%     PTsOnset  - tone onset time (s) from '_at_#s' or '_at_#pt#s'
+%                 (where 'pt' encodes a decimal point)
+%     PTmsLen   - tone duration (ms) from '###ms_at'
+%
+%   DRC-only fields (added when 'DRC' appears in Pulse):
+%     dBrange       - dB range string (e.g. '35-65'); comma-joined if
+%                     multiple matches
+%     dBdelta       - |range width| in dB (scalar)
+%     kHzBandwidth  - frequency bandwidth string (e.g. '5-25'); defaults
+%                     to '5-25' for legacy 45-55 / 35-65 dB ranges,
+%                     errors otherwise if not parseable
+%     msDRClen      - DRC chord length (ms) from '###msDRC'
+%     sPulseLenEphus- Ephus pulse length (s) from '_#s_'; doubled when
+%                     dBrange has multiple entries and pulseset contains
+%                     'sEach'
+%
+%   Notes:
+%     - Parsing is regex-based on the pulse name; expects the naming
+%       conventions used in this lab's Ephus pulse files.
+%
+%   Naming convention:
+%     Stim-param fields follow <StimFamily><unit><Quantity> in PascalCase
+%     (e.g. PTsOnset, PTmsLen, msDRClen). The unit is included when the
+%     value's unit is not self-evident from the quantity name. Mirrors the
+%     BPN convention in extractBPNStimParams.m and the Spont convention in
+%     extractSpontParams.m.
 
 %organizes 'TriggerParams' and 'Stim' into relevant params:
 stimParams.trigDelay = triggerParams.stimDelay;

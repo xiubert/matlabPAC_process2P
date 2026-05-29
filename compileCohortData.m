@@ -5,13 +5,28 @@ clearvars;close all;clc;
 %%%%%%%%%%%%%%%%%%%%%%%%%%%  EDIT HERE  %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 cohortName = 'CaMKII';
-outputTableSaveDir = 'D:\Data\';
-params.parentPath = 'D:\Data\CaMKII_combined';
+
+outputTableSaveDir = uigetdir(pwd,'Select folder to save output tables');
+if isequal(outputTableSaveDir,0)
+    error('No output folder selected.');
+end
+
+params.parentPath = uigetdir(outputTableSaveDir,'Select parent folder containing animal data');
+if isequal(params.parentPath,0)
+    error('No animal data folder selected.');
+end
 
 params.tableDir = '.';
-params.treatment = 'pre';
+params.treatment = 'none';
 params.pkPTsigSD = 2;
 params.nFramesPostPulse = 2;
+
+params.cohort = cohortName;
+params.colors.lohiPre = [0,0.451000000000000,0.741200000000000;0.851000000000000,0.329400000000000,0.102000000000000];
+params.colors.lohiPost = [0,0.302000000000000,0.490200000000000;0.588200000000000,0.231400000000000,0.078400000000000];
+params.colors.lohiTracePre = [0.729400000000000,0.874500000000000,1;1,0.694100000000000,0.541200000000000];
+params.colors.lohiTracePost = [0.529400000000000,0.674500000000000,0.800000000000000;0.800000000000000,0.494100000000000,0.341200000000000];
+params.colors.ratio = [0.651000000000000,0.651000000000000,0.651000000000000;0.149000000000000,0.149000000000000,0.149000000000000];
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%  DONE  %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -36,7 +51,7 @@ tmp = vertcat(tmp{:});
 
 Tinput.animal = G;
 Tinput.roiID = tmp;
-clearvars -except Tinput params
+clearvars -except Tinput params outputTableSaveDir cohortName
 
 %% save output table
 

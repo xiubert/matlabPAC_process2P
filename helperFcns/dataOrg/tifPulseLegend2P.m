@@ -40,9 +40,11 @@ for f = 1:length(pulses)
 
     % --- pulse fields ---
     if size(pulse, 2) > 1
-        % map / multi-pulse file — store all pulse names, sets, and xsg files as cell arrays
+        % map / multi-pulse file — pulseName and xsg as cell arrays;
+        % pulseSet kept scalar (single pulse-set per file) so downstream
+        % contains({pulseLegend2P.pulseSet}, ...) in stimParam2ROI works.
         pulses(f).pulseName = {pulse.pulsename};
-        pulses(f).pulseSet  = {pulse.pulseset};
+        pulses(f).pulseSet  = pulse(1).pulseset;
         pulses(f).xsg       = {pulse.curXSG};
     elseif endsWith(pulse.pulsename, {'_1','_2','_3','_4','_5','_6','_7','_8','_9'})
         % single pulse with trailing index — strip it

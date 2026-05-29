@@ -5,6 +5,7 @@ clearvars; close all; clc;
 pkPTsigSD = 2;
 nFramesPostPulse = 2;
 plotAllROI = true;
+chanID = 2;%1: red channel; 2: green channel
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 dataPath = uigetdir('C:');
@@ -50,7 +51,7 @@ if ~isfolder(adhocMapOutputDir)
             [tifFileList.map(nTif).rawFroi,tifFileList.map(nTif).nFrames,...
                 tifFileList.map(nTif).frameRate] = TifROImask2rawFroi(...
                 fullfile(tifFileList.map(nTif).folder,tifFileList.map(nTif).name),...
-                fluo2p.roi);
+                fluo2p.roi,chanID);
         end
         
         % save adhoc map data
