@@ -59,6 +59,19 @@ remROIplotNo = rem(nCell,ROIperFig);
 roiFigNo = floor(nCell/ROIperFig)+(remROIplotNo>=1);
 dBdeltaList = unique(stimTable.dBdelta);
 ndBdelta=length(dBdeltaList);
+
+% Guard: the PT F0 window (tBasePT) must lie entirely before pure-tone onset,
+% otherwise the "baseline" would include the tone response and every dFF_PT /
+% dFF_PT_preDRCf0 / peak would be mis-normalized. tBasePT is hardcoded here
+% (the source indexed it by round(PTsOnset)), so verify all rows are
+% compatible rather than failing silently.
+if tBasePT(2) > min(anmlROIbyStim.PTsOnset)
+    error('processCGC:PTbaselineWindow',...
+        ['tBasePT(2)=%.3g s is after the earliest PTsOnset (%.3g s); the PT ' ...
+         'baseline would overlap the tone. Set tBasePT to a window before ' ...
+         'onset (or branch on PTsOnset as in plotDataTable.m).'],...
+        tBasePT(2), min(anmlROIbyStim.PTsOnset));
+end
 % (raw-F per-ROI diagnostic plot moved to the APPENDIX section at end of file)
 %% dFF re DRC
 anmlROIbyStim.t_dFF_DRC = rowfun(@(t) ...
@@ -90,7 +103,7 @@ for roiFigN = 1:roiFigNo
             roi=roiList(curROIno);
             rows=anmlROIbyStim(anmlROIbyStim.roiID==roi,:);
             hold on;
-            label=strings(height(rows));
+            label=strings(height(rows),1);
             for r=1:height(rows)
                 x=rows.t_dFF_DRC{r};
                 y=rows.dFF_DRC_avg{r};
@@ -124,8 +137,10 @@ anmlROIbyStim.dFF_PT = rowfun(@(F,t) ...
     find((t<=tBasePT(2)),1,'last')],1)},...
     anmlROIbyStim,'InputVariables',{'SCALEDfissaFroi','t_total'},...
     'ExtractCellContents',true,'OutputFormat','uniform');
+% cell-average dF/F (re PT baseline) across reps (1 x nFrames); omitnan +
+% explicit dim 1 to match dFF_DRC_avg and stay robust to single-rep rows.
 anmlROIbyStim.dFF_PT_avg = rowfun(@(F) ...
-    {mean(F)},...
+    {mean(F,1,'omitnan')},...
     anmlROIbyStim,'InputVariables',{'dFF_PT'},...
     'ExtractCellContents',true,'OutputFormat','uniform');
 % Re-baseline the cell-AVERAGE trace (dFF_DRC_avg) to the pre-PT window.
@@ -149,7 +164,7 @@ for roiFigN = 1:roiFigNo
             roi=roiList(curROIno);
             rows=anmlROIbyStim(anmlROIbyStim.roiID==roi,:);
             hold on;
-            label=strings(height(rows));
+            label=strings(height(rows),1);
             for r=1:height(rows)
                 x=rows.t_dFF_DRC{r};
                 y=rows.dFF_PT_preDRCf0{r};
