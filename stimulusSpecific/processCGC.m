@@ -27,11 +27,14 @@ pkPTframeBin = 4;        % peak-search window length (frames) after PT onset
 pkPTsigSD    = 2;        % significance threshold, in baseline-SD multiples
 
 % plotting
-ROIperFig    = 9;        % ROI subplots per figure (3x3)
-colors       = getContrastColors();   % contrast color scheme (lohiPre/lohiTracePre)
-avgTraceXlim = [1 5];    % x-limits (s) for population average-trace plot
-pkScatterLim = [0 1];    % axis limits for low-vs-high peak dF/F scatter
-jitterAmount = 0.08;     % horizontal jitter for bar-graph scatter overlay
+ROIperFig       = 9;     % ROI subplots per figure (3x3)
+colors          = getContrastColors();  % contrast color scheme (lohiPre/lohiTracePre)
+avgTraceXlim    = [1 5]; % x-limits (s) for population average-trace plot
+pkScatterLim    = [0 1]; % axis limits for low-vs-high peak dF/F scatter
+jitterAmount    = 0.08;  % horizontal jitter for bar-graph scatter overlay
+popTraceSigOnly = true;  % population avg trace: true = significant cells only,
+                         % false = all cells. Scatter/bar/t-test always use
+                         % significant-in-both-contrasts cells.
 
 %% ---- LOAD DATA ----
 if ~exist('dataPath','var')
@@ -218,11 +221,47 @@ tmp = rowfun(@(dFF,t,PTonset,fr) ...
 anmlROIbyStim.pkPT_sig = tmp(:,1);
 anmlROIbyStim.sigPk = tmp(:,2);
 anmlROIbyStim.pkPT = tmp(:,3);
+
+%% Per-ROI peak + significance
+% Per-ROI peak dF/F and significance flag: rows in roiList order, one column
+% per contrast level (dBdeltaList order). Built by explicit roiID+dBdelta
+% lookup so downstream indexing does NOT depend on the row order of
+% anmlROIbyStim. pkByROI holds the peak of each cell-average trace (pkPT);
+% sigByROI holds the pkFcalc significance flag for that same average trace.
+pkByROI  = nan(nCell,ndBdelta);
+sigByROI = false(nCell,ndBdelta);
+for i = 1:nCell
+    rows = anmlROIbyStim(anmlROIbyStim.roiID==roiList(i),:);
+    for k = 1:ndBdelta
+        sel = rows.dBdelta==dBdeltaList(k);
+        v = cell2mat(rows.pkPT(sel));
+        if ~isempty(v)
+            pkByROI(i,k)  = v;                          % errors loudly if >1 row per (ROI,contrast)
+            sigByROI(i,k) = logical(cell2mat(rows.sigPk(sel)));
+        end
+    end
+end
+
+% SIGNIFICANCE FILTER: keep only cells whose cell-AVERAGE peak is significant
+% in BOTH contrasts (all(sigByROI,2)). This is a significance criterion from
+% pkFcalc, NOT an amplitude (pkPT>0) threshold, and matches the source
+% matlabPAC_CGCplot/plotDataTable.m (sigCellID = all(sig,2)). The scatter,
+% bar graph and paired t-test below all use this mask.
+valid = all(sigByROI,2);
+
 %% Save
 save(fullfile(dataPath,[animal '_anmlROI_CGCstimTable.mat']),"anmlROIbyStim",'-append');
 %% Plot avg of all ROIs
-[groups,idC] = findgroups(anmlROIbyStim.dBdelta);
-tmp = splitapply(@(x) {vertcat(x{:})},anmlROIbyStim.dFF_PT_avg,groups);
+% Restrict to significant-in-both cells when popTraceSigOnly is true, so this
+% population trace uses the same cell set as the scatter/bar below; otherwise
+% average across all ROIs.
+if popTraceSigOnly
+    Tpop = anmlROIbyStim(ismember(anmlROIbyStim.roiID,roiList(valid)),:);
+else
+    Tpop = anmlROIbyStim;
+end
+[groups,idC] = findgroups(Tpop.dBdelta);
+tmp = splitapply(@(x) {vertcat(x{:})},Tpop.dFF_PT_avg,groups);
 [G0,idC0] = findgroups(idC);
 dFF_PT_mean = splitapply(@(x) {cellfun(@nanmean,x,'uni',0)},tmp,G0);
 dFF_PT_sem = splitapply(@(x) {cellfun(@SEMcalc,x,'uni',0)},tmp,G0);
@@ -245,27 +284,10 @@ hold off;
 title('Average across cell');
 legend('Low contrast', 'High contrast')
 %% Low vs High per ROI
-
-% Per-ROI peak dF/F: rows in roiList order, one column per contrast level
-% (dBdeltaList order). Built by explicit roiID+dBdelta lookup so downstream
-% indexing does NOT depend on the row order of anmlROIbyStim.
-pkByROI = nan(nCell,ndBdelta);
-for i = 1:nCell
-    rows = anmlROIbyStim(anmlROIbyStim.roiID==roiList(i),:);
-    for k = 1:ndBdelta
-        v = cell2mat(rows.pkPT(rows.dBdelta==dBdeltaList(k)));
-        if ~isempty(v)
-            pkByROI(i,k) = v;   % errors loudly if >1 row per (ROI,contrast)
-        end
-    end
-end
-
-x = pkByROI(:,2);   % high contrast (dBdeltaList(2))
-y = pkByROI(:,1);   % low contrast  (dBdeltaList(1))
-
-% keep only roiIDs with both values positive
-valid = (x>0) & (y>0);
-x = x(valid); y = y(valid);
+% pkByROI / valid computed above (Per-ROI peak + significance section).
+% valid = significant-in-both-contrasts cells.
+x = pkByROI(valid,2);   % high contrast (dBdeltaList(2))
+y = pkByROI(valid,1);   % low contrast  (dBdeltaList(1))
 roiList_pos = roiList(valid);
 
 % make scatter
@@ -290,7 +312,7 @@ pkResp_means=NaN(ndBdelta,1);
 pkResp_sems=NaN(ndBdelta,1);
 
 for k = 1:ndBdelta
-    % pkByROI is in roiList order, matching the valid mask (see scatter block)
+    % pkByROI and valid share roiList order (see Per-ROI peak + significance)
     vals = pkByROI(valid,k);
     group{k}=vals;
     pkResp_means(k) = mean(vals,'omitnan');
