@@ -1,4 +1,39 @@
-%%
+% PROCESSCGC  CGC / pure-tone-in-contrast (contrast gain control) analysis.
+%
+%   Loads <animal>_anmlROI_CGCstimTable.mat, computes dF/F referenced to the
+%   DRC baseline and then to the pre-pure-tone (PT) baseline, detects peak PT
+%   responses + significance, and plots per-ROI and population summaries.
+%
+%   SIGNIFICANCE: peak significance is computed from the cell-AVERAGE dF/F
+%   trace (averaged across stim repetitions), not from individual trial
+%   traces.  This is the accurate approach and is what pkFcalc expects (see
+%   its docstring).  The average is formed in dFF_DRC_avg and carried through
+%   dFF_PT_preDRCf0 into pkFcalc.  Do NOT switch the dFF_PT_preDRCf0 input
+%   back to per-trial dFF_DRC.
+%
+%   Adapted from matlabPAC_CGCplot/plotDataTable.m, which thresholded
+%   significance on per-trial traces.
+%
+%   See also dFoFcalc, pkFcalc, getContrastColors, fillSEMplot
+
+%% ---- PARAMETERS ----
+% dF/F baseline windows (seconds, re trial start after trigDelay correction)
+tBaseDRC   = [-1.2 0];   % F0 window before DRC onset
+tBasePT    = [1 2];      % F0_PT window before pure tone (valid for PTsOnset==2)
+PTonsetSec = 2;          % pure-tone onset (s); used for plot markers/xlines
+
+% peak-response detection
+pkPTframeBin = 4;        % peak-search window length (frames) after PT onset
+pkPTsigSD    = 2;        % significance threshold, in baseline-SD multiples
+
+% plotting
+ROIperFig    = 9;        % ROI subplots per figure (3x3)
+colors       = getContrastColors();   % contrast color scheme (lohiPre/lohiTracePre)
+avgTraceXlim = [1 5];    % x-limits (s) for population average-trace plot
+pkScatterLim = [0 1];    % axis limits for low-vs-high peak dF/F scatter
+jitterAmount = 0.08;     % horizontal jitter for bar-graph scatter overlay
+
+%% ---- LOAD DATA ----
 if ~exist('dataPath','var')
     dataPath = uigetdir('','Select the animal data folder');
     if isequal(dataPath,0)
@@ -59,13 +94,7 @@ ndBdelta=length(dBdeltaList);
 %     end
 %     clear roiSubPlotN
 % end
-%% 
-
-tBaseDRC = [-1.2 0];
-
-
-%dFF re DRC
-
+%% dFF re DRC
 anmlROIbyStim.t_dFF_DRC = rowfun(@(t) ...
     {t(find((t>=tBaseDRC(1)),1,'first'):end)},...
     anmlROIbyStim,'InputVariables',{'t_total'},...
@@ -77,8 +106,10 @@ anmlROIbyStim.dFF_DRC = rowfun(@(F,t) ...
     anmlROIbyStim,'InputVariables',{'SCALEDfissaFroi','t_total'},...
     'ExtractCellContents',true,'OutputFormat','uniform');
 
+% cell-average dF/F across stim repetitions (1 x nFrames per row).
+% This average is what feeds significance detection (see dFF_PT_preDRCf0).
 anmlROIbyStim.dFF_DRC_avg = rowfun(@(F) ...
-    {mean(F)},...
+    {mean(F,1,'omitnan')},...
     anmlROIbyStim,'InputVariables',{'dFF_DRC'},...
     'ExtractCellContents',true,'OutputFormat','uniform');
 %%
@@ -106,7 +137,7 @@ for roiFigN = 1:roiFigNo
             end
             xlabel('time/s')
             ylabel('dF/F')
-            xline(2,'--')
+            xline(PTonsetSec,'--')
             hold off;
             title('ROI'+string(curROIno));
             legend(label(1), label(2),'pure tone')
@@ -118,7 +149,6 @@ end
 
 %
 %% dFF re PT re DRCf0
-tBasePT = [1 2];
 anmlROIbyStim.t_dFF_PT = rowfun(@(t) ...
     {t(find((t>=tBasePT(1)),1,'first'):end)},...
     anmlROIbyStim,'InputVariables',{'t_total'},...
@@ -132,9 +162,12 @@ anmlROIbyStim.dFF_PT_avg = rowfun(@(F) ...
     {mean(F)},...
     anmlROIbyStim,'InputVariables',{'dFF_PT'},...
     'ExtractCellContents',true,'OutputFormat','uniform');
-anmlROIbyStim.dFF_PT_preDRCf0 = rowfun(@(dFF_DRC,t) ...
-    {dFF_DRC  - ...
-    nanmean(dFF_DRC(:,t>=tBasePT(1) & t<=tBasePT(2)),2)},...
+% Re-baseline the cell-AVERAGE trace (dFF_DRC_avg) to the pre-PT window.
+% Significance must be computed on this average, not per-trial dFF_DRC, so
+% the input variable is dFF_DRC_avg (1 x nFrames). See header note.
+anmlROIbyStim.dFF_PT_preDRCf0 = rowfun(@(dFF_DRC_avg,t) ...
+    {dFF_DRC_avg  - ...
+    nanmean(dFF_DRC_avg(:,t>=tBasePT(1) & t<=tBasePT(2)),2)},...
     anmlROIbyStim,'InputVariables',{'dFF_DRC_avg','t_dFF_DRC'},...
     'ExtractCellContents',true,'OutputFormat','uniform');
 
@@ -163,7 +196,7 @@ for roiFigN = 1:roiFigNo
             end
             xlabel('time/s')
             ylabel('dF/F')
-            xline(2,'--')
+            xline(PTonsetSec,'--')
             hold off;
             title('ROI'+string(curROIno));
             legend(label(1), label(2),'pure tone')
@@ -174,9 +207,8 @@ for roiFigN = 1:roiFigNo
 end
 
 %% Peak dFF
-pkPTframeBin = 4;
-pkPTsigSD=2;
-
+% pkFcalc receives the cell-average dFF_PT_preDRCf0 (1 x nFrames per row),
+% so significance is thresholded on the averaged trace (correct approach).
 tmp = rowfun(@(dFF,t,PTonset,fr) ...
     pkFcalc(dFF,...
     find(t>=(PTonset+(1/fr)),1,'first'),...
@@ -189,9 +221,6 @@ anmlROIbyStim.pkPT = tmp(:,3);
 %% Save
 save(fullfile(dataPath,[animal '_anmlROI_CGCstimTable.mat']),"anmlROIbyStim",'-append');
 %% Plot avg of all ROIs
-
-colors.lohi = [0,0.451000000000000,0.741200000000000;0.851000000000000,0.329400000000000,0.102000000000000];
-colors.lohiTrace = [0.729400000000000,0.874500000000000,1;1,0.694100000000000,0.541200000000000];
 [groups,idC] = findgroups(anmlROIbyStim.dBdelta);
 tmp = splitapply(@(x) {vertcat(x{:})},anmlROIbyStim.dFF_PT_avg,groups);
 [G0,idC0] = findgroups(idC);
@@ -204,14 +233,14 @@ for r=1:ndBdelta
     x=anmlROIbyStim(1,:).t_dFF_PT{1,1};
     y=dFF_PT_mean{r,1}{1,1};
     yerr=dFF_PT_sem{r,1}{1,1};
-    fillSEMplot(x,y,yerr,colors.lohi(r,:),colors.lohiTrace(r,:));
+    fillSEMplot(x,y,yerr,colors.lohiPre(r,:),colors.lohiTracePre(r,:));
 end
 
 
 xlabel('time/s')
 ylabel('dF/F')
-xline(2,'--','pure tone')
-xlim([1 5])
+xline(PTonsetSec,'--','pure tone')
+xlim(avgTraceXlim)
 hold off;
 title('Average across cell');
 legend('Low contrast', 'High contrast')
@@ -236,7 +265,7 @@ figure;
 scatter(x,y,45,'filled','MarkerFaceAlpha',0.8);
 hold on;
 % identity line
-lims = [0 1];
+lims = pkScatterLim;
 plot(lims, lims, '--k', 'LineWidth', 1);
 hold off;
 
@@ -268,9 +297,8 @@ errorbar(1:ndBdelta, pkResp_means, pkResp_sems, 'k.', 'LineWidth',1);
 
 % Overlay individual points with jitter
 rng(0); % for reproducible jitter
-jitterAmount = 0.08; % tweak for spread
 for k = 1:ndBdelta
-    b.CData(k,:)=colors.lohi(k,:);
+    b.CData(k,:)=colors.lohiPre(k,:);
     vals = cell2mat(anmlROIbyStim.pkPT(groups == k));
     vals=vals(valid);
     x = (k) + (rand(size(vals)) - 0.5) * 2 * jitterAmount;
