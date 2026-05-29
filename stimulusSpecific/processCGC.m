@@ -246,14 +246,22 @@ title('Average across cell');
 legend('Low contrast', 'High contrast')
 %% Low vs High per ROI
 
-x = nan(nCell,1);
-y = nan(nCell,1);
+% Per-ROI peak dF/F: rows in roiList order, one column per contrast level
+% (dBdeltaList order). Built by explicit roiID+dBdelta lookup so downstream
+% indexing does NOT depend on the row order of anmlROIbyStim.
+pkByROI = nan(nCell,ndBdelta);
 for i = 1:nCell
-    roi=roiList(i);
-    rows=anmlROIbyStim(anmlROIbyStim.roiID==roi,:);
-    x(i)=cell2mat(rows.pkPT(rows.dBdelta==dBdeltaList(2)));
-    y(i)=cell2mat(rows.pkPT(rows.dBdelta==dBdeltaList(1)));
+    rows = anmlROIbyStim(anmlROIbyStim.roiID==roiList(i),:);
+    for k = 1:ndBdelta
+        v = cell2mat(rows.pkPT(rows.dBdelta==dBdeltaList(k)));
+        if ~isempty(v)
+            pkByROI(i,k) = v;   % errors loudly if >1 row per (ROI,contrast)
+        end
+    end
 end
+
+x = pkByROI(:,2);   % high contrast (dBdeltaList(2))
+y = pkByROI(:,1);   % low contrast  (dBdeltaList(1))
 
 % keep only roiIDs with both values positive
 valid = (x>0) & (y>0);
@@ -282,8 +290,8 @@ pkResp_means=NaN(ndBdelta,1);
 pkResp_sems=NaN(ndBdelta,1);
 
 for k = 1:ndBdelta
-    vals = cell2mat(anmlROIbyStim.pkPT(groups == k));
-    vals=vals(valid);
+    % pkByROI is in roiList order, matching the valid mask (see scatter block)
+    vals = pkByROI(valid,k);
     group{k}=vals;
     pkResp_means(k) = mean(vals,'omitnan');
     % SEM over the valid (filtered) cells only; SEMcalc divides by the count
@@ -301,8 +309,7 @@ errorbar(1:ndBdelta, pkResp_means, pkResp_sems, 'k.', 'LineWidth',1);
 rng(0); % for reproducible jitter
 for k = 1:ndBdelta
     b.CData(k,:)=colors.lohiPre(k,:);
-    vals = cell2mat(anmlROIbyStim.pkPT(groups == k));
-    vals=vals(valid);
+    vals = group{k};
     x = (k) + (rand(size(vals)) - 0.5) * 2 * jitterAmount;
     % Plot points
     scatter(x, vals, 20, 'k', 'filled', 'MarkerFaceAlpha', 0.6);
