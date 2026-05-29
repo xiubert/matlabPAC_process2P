@@ -286,7 +286,9 @@ for k = 1:ndBdelta
     vals=vals(valid);
     group{k}=vals;
     pkResp_means(k) = mean(vals,'omitnan');
-    pkResp_sems(k)= std(vals)/sqrt(nCell);
+    % SEM over the valid (filtered) cells only; SEMcalc divides by the count
+    % of non-NaN entries, not total nCell, so it is not understated.
+    pkResp_sems(k)= SEMcalc(vals);
 end
 
 % Create bar plot and error bars (SEM)
