@@ -4,15 +4,15 @@
 %   DRC baseline and then to the pre-pure-tone (PT) baseline, detects peak PT
 %   responses + significance, and plots per-ROI and population summaries.
 %
-%   SIGNIFICANCE: peak significance is computed from the cell-AVERAGE dF/F
-%   trace (averaged across stim repetitions), not from individual trial
-%   traces.  This is the accurate approach and is what pkFcalc expects (see
-%   its docstring).  The average is formed in dFF_DRC_avg and carried through
-%   dFF_PT_preDRCf0 into pkFcalc.  Do NOT switch the dFF_PT_preDRCf0 input
-%   back to per-trial dFF_DRC.
+%   METHOD (matches matlabPAC_CGCplot/plotDataTable.m and the manuscript):
+%     dFF_DRC          = (F - F0_DRC)/F0_DRC, F0_DRC = mean F over [-1.2 0] s (pre DRC onset).
+%     dFF_PT  = dFF_DRC - F0_PT, F0_PT = mean of that dF/F over [1 2] s
+%                        (an additive 2nd baseline subtraction, NOT a divisive
+%                        re-normalization off raw F). Per-trial, as plotDataTable.
 %
-%   Adapted from matlabPAC_CGCplot/plotDataTable.m, which thresholded
-%   significance on per-trial traces.
+%   SIGNIFICANCE: per-ROI PT plot, and the population trace all use the
+%   CELL-AVERAGE response (dFF_PT_avg = mean over reps), not individual
+%   trials. pkFcalc is fed dFF_PT_avg.
 %
 %   See also dFoFcalc, pkFcalc, getContrastColors, fillSEMplot
 
@@ -45,16 +45,19 @@ if ~exist('dataPath','var')
     animal = regexp(dataPath,'[A-Z]{2}\d{4}','match','once');
     load(fullfile(dataPath,[animal '_anmlROI_CGCstimTable.mat']))
 end
-%% PLOT RESP to CGC
-% calculate average F
+
+%% Setup
+
+% calculate time vector for each row based on frame rate and trigDelay
+% 0 s corresponds to DRC stimulus start, time vector starts at -trigDelay (delay to Ephus stimulus trigger)
 anmlROIbyStim.t_total = rowfun(@(F,fr,trigDelay) ...
     {(1:size(F,2))/fr-trigDelay},...
     anmlROIbyStim,'InputVariables',{'SCALEDfissaFroi','frameRate','trigDelay'},...
     'ExtractCellContents',true,'OutputFormat','uniform');
 
-%% Setup
 anmlROIbyStim.roiID = string(strtrim(cellstr(anmlROIbyStim.roiID)));
 roiList = unique(anmlROIbyStim.roiID, 'stable');
+nCell = numel(roiList);   % number of cells (unique ROIs); not stored in the .mat
 remROIplotNo = rem(nCell,ROIperFig);
 roiFigNo = floor(nCell/ROIperFig)+(remROIplotNo>=1);
 dBdeltaList = unique(stimTable.dBdelta);
@@ -62,7 +65,7 @@ ndBdelta=length(dBdeltaList);
 
 % Guard: the PT F0 window (tBasePT) must lie entirely before pure-tone onset,
 % otherwise the "baseline" would include the tone response and every dFF_PT /
-% dFF_PT_preDRCf0 / peak would be mis-normalized. tBasePT is hardcoded here
+% dFF_PT / peak would be mis-normalized. tBasePT is hardcoded here
 % (the source indexed it by round(PTsOnset)), so verify all rows are
 % compatible rather than failing silently.
 if tBasePT(2) > min(anmlROIbyStim.PTsOnset)
@@ -73,7 +76,11 @@ if tBasePT(2) > min(anmlROIbyStim.PTsOnset)
         tBasePT(2), min(anmlROIbyStim.PTsOnset));
 end
 % (raw-F per-ROI diagnostic plot moved to the APPENDIX section at end of file)
-%% dFF re DRC
+
+%% dFF DRC
+% dFF re pre DRC
+% fluorescence traces (F(t) = ΔF/F ) first calculated as (F − F0_DRC)/ F0_DRC, 
+% where F0_DRC is the average cell fluorescence intensity before DRC sound onset across −1.2 to 0 s. 
 anmlROIbyStim.t_dFF_DRC = rowfun(@(t) ...
     {t(find((t>=tBaseDRC(1)),1,'first'):end)},...
     anmlROIbyStim,'InputVariables',{'t_total'},...
@@ -85,17 +92,18 @@ anmlROIbyStim.dFF_DRC = rowfun(@(F,t) ...
     anmlROIbyStim,'InputVariables',{'SCALEDfissaFroi','t_total'},...
     'ExtractCellContents',true,'OutputFormat','uniform');
 
-% cell-average dF/F across stim repetitions (1 x nFrames per row).
-% This average is what feeds significance detection (see dFF_PT_preDRCf0).
+% cell-average dF/F re DRC across stim repetitions (1 x nFrames per row);
+% used only for the per-ROI overview plot below. (The PT-response average that
+% feeds significance is dFF_PT_avg, computed in the next section.)
 anmlROIbyStim.dFF_DRC_avg = rowfun(@(F) ...
     {mean(F,1,'omitnan')},...
     anmlROIbyStim,'InputVariables',{'dFF_DRC'},...
     'ExtractCellContents',true,'OutputFormat','uniform');
-%%
+
+    %% PLOT dFF DRC
 %initialize subplots for multiple ROI per fig
 for roiFigN = 1:roiFigNo
-    figure;
-    title('dF/F responses for each ROI')
+    figure('Name','dF/F responses for each ROI');
     for roiSubPlotN = 1:ROIperFig
         curROIno = roiFigN*ROIperFig - ROIperFig + roiSubPlotN;
         if curROIno <= nCell
@@ -127,36 +135,37 @@ for roiFigN = 1:roiFigNo
 end
 
 %
-%% dFF re PT re DRCf0
-anmlROIbyStim.t_dFF_PT = rowfun(@(t) ...
-    {t(find((t>=tBasePT(1)),1,'first'):end)},...
-    anmlROIbyStim,'InputVariables',{'t_total'},...
-    'ExtractCellContents',true,'OutputFormat','uniform');
-anmlROIbyStim.dFF_PT = rowfun(@(F,t) ...
-    {dFoFcalc(F,[find((t>=tBasePT(1)),1,'first')...
-    find((t<=tBasePT(2)),1,'last')],1)},...
-    anmlROIbyStim,'InputVariables',{'SCALEDfissaFroi','t_total'},...
-    'ExtractCellContents',true,'OutputFormat','uniform');
-% cell-average dF/F (re PT baseline) across reps (1 x nFrames); omitnan +
-% explicit dim 1 to match dFF_DRC_avg and stay robust to single-rep rows.
-anmlROIbyStim.dFF_PT_avg = rowfun(@(F) ...
-    {mean(F,1,'omitnan')},...
-    anmlROIbyStim,'InputVariables',{'dFF_PT'},...
-    'ExtractCellContents',true,'OutputFormat','uniform');
-% Re-baseline the cell-AVERAGE trace (dFF_DRC_avg) to the pre-PT window.
-% Significance must be computed on this average, not per-trial dFF_DRC, so
-% the input variable is dFF_DRC_avg (1 x nFrames). See header note.
-anmlROIbyStim.dFF_PT_preDRCf0 = rowfun(@(dFF_DRC_avg,t) ...
-    {dFF_DRC_avg  - ...
-    nanmean(dFF_DRC_avg(:,t>=tBasePT(1) & t<=tBasePT(2)),2)},...
-    anmlROIbyStim,'InputVariables',{'dFF_DRC_avg','t_dFF_DRC'},...
+%% dFF re PT
+
+% To quantify responses to pure tones that were preceded by 2 s of contrast DRC, 
+% we calculated F(t)-F0_PT, where F0_PT is the average of F(t) across 1–2 s for a 2 s DRC duration.
+% F(t) is already dF/F re pre-DRC, so this is a second baseline subtraction (re PT baseline) on top of the first (re DRC baseline). 
+
+% PT response = F(t) - F0_PT, where F(t) is the existing pre-DRC dF/F (dFF_DRC)
+% and F0_PT is the mean of that dF/F over the PT baseline window [1 2] s. This
+% is an additive second baseline subtraction on the existing dF/F (NOT a fresh
+% divisive (F-F0_PT)/F0_PT off raw F), and shares the t_dFF_DRC time axis.
+% Per-trial (nReps x nFrames), exactly as plotDataTable.m.
+anmlROIbyStim.dFF_PT = rowfun(@(dFF_DRC,t) ...
+    {dFF_DRC  - ...
+    nanmean(dFF_DRC(:,t>=tBasePT(1) & t<=tBasePT(2)),2)},...
+    anmlROIbyStim,'InputVariables',{'dFF_DRC','t_dFF_DRC'},...
     'ExtractCellContents',true,'OutputFormat','uniform');
 
-%% 
+% CELL-AVERAGE PT response across reps (1 x nFrames). This is the ONLY intended
+% deviation from plotDataTable.m: significance (pkFcalc), the per-ROI PT plot,
+% and the population trace are all computed from each cell's averaged response,
+% NOT from individual trials. Averaging commutes with the linear F0_PT
+% subtraction, so this equals the per-trial dFF_PT averaged over reps.
+anmlROIbyStim.dFF_PT_avg = rowfun(@(dFF) ...
+    {mean(dFF,1,'omitnan')},...
+    anmlROIbyStim,'InputVariables',{'dFF_PT'},...
+    'ExtractCellContents',true,'OutputFormat','uniform');
+
+%% PLOT dFF re PT re DRCf0
 %initialize subplots for multiple ROI per fig
 for roiFigN = 1:roiFigNo
-    figure;
-    title('dF/F responses re PT re DRCf0 for each ROI');
+    figure('Name','dF/F responses re PT re DRCf0 for each ROI');
     for roiSubPlotN = 1:ROIperFig
         curROIno = roiFigN*ROIperFig - ROIperFig + roiSubPlotN;
         if curROIno <= nCell
@@ -167,7 +176,7 @@ for roiFigN = 1:roiFigNo
             label=strings(height(rows),1);
             for r=1:height(rows)
                 x=rows.t_dFF_DRC{r};
-                y=rows.dFF_PT_preDRCf0{r};
+                y=rows.dFF_PT_avg{r};
                 plot(x,y,'LineWidth', 2);
                 if rows.dBdelta(r) == dBdeltaList(1)
                     label(r)='Low contrast';
@@ -187,14 +196,28 @@ for roiFigN = 1:roiFigNo
     clear roiSubPlotN
 end
 
-%% Peak dFF
-% pkFcalc receives the cell-average dFF_PT_preDRCf0 (1 x nFrames per row),
-% so significance is thresholded on the averaged trace (correct approach).
-tmp = rowfun(@(dFF,t,PTonset,fr) ...
-    pkFcalc(dFF,...
-    find(t>=(PTonset+(1/fr)),1,'first'),...
+%% Peak dFF PT response and significance
+% pkFcalc receives the CELL-AVERAGE PT response (dFF_PT_avg, 1 x nFrames
+% per row), so significance is thresholded on each cell's averaged trace, NOT on
+% individual trials.
+%
+% SIGNIFICANCE BASELINE: pkFcalc uses frames 1:frameStart of the trace it is
+% given as the baseline (mean + pkPTsigSD*SD). To make that baseline the 1-2 s
+% pre-PT F0_PT window (sustained DRC just before the tone) we (1) crop the
+% trace+time to t>=tBasePT(1), and (2) set frameStart at PT onset (NOT
+% PTonset+1/fr). This makes baseline = [tBasePT(1), PT onset] exactly; using
+% PTonset+1/fr would push the baseline one frame past onset, pulling the rising
+% PT response into the baseline and inflating the SD. Including the DRC-onset
+% transient (the whole pre-PT period) would likewise inflate the SD. The peak
+% search runs nFrameWindow frames from PT onset; the onset frame sits in both
+% baseline and peak window (the usual minor pkFcalc overlap) but precedes the
+% Ca rise, so it does not affect the peak value.
+
+tmp = rowfun(@(dFF,t,PTonset) ...
+    pkFcalc(dFF(:, t>=tBasePT(1)),...
+    find(t(t>=tBasePT(1))>=PTonset,1,'first'),...
     pkPTframeBin,pkPTsigSD),...
-    anmlROIbyStim,'InputVariables',{'dFF_PT_preDRCf0','t_dFF_DRC','PTsOnset','frameRate'},...
+    anmlROIbyStim,'InputVariables',{'dFF_PT_avg','t_dFF_DRC','PTsOnset'},...
     'ExtractCellContents',true,'OutputFormat','cell','OutputVariableNames',{'sigPk','sig','pk'});
 anmlROIbyStim.pkPT_sig = tmp(:,1);
 anmlROIbyStim.sigPk = tmp(:,2);
@@ -206,6 +229,7 @@ anmlROIbyStim.pkPT = tmp(:,3);
 % lookup so downstream indexing does NOT depend on the row order of
 % anmlROIbyStim. pkByROI holds the peak of each cell-average trace (pkPT);
 % sigByROI holds the pkFcalc significance flag for that same average trace.
+
 pkByROI  = nan(nCell,ndBdelta);
 sigByROI = false(nCell,ndBdelta);
 for i = 1:nCell
@@ -227,10 +251,11 @@ end
 % bar graph and paired t-test below all use this mask.
 valid = all(sigByROI,2);
 
-%% Save
+%% Save output
 save(fullfile(dataPath,[animal '_anmlROI_CGCstimTable.mat']),"anmlROIbyStim",'-append');
+
 %% Plot avg of all ROIs
-% Restrict to significant-in-both cells when popTraceSigOnly is true, so this
+% Restrict to cells with significant responses in both contrasts when popTraceSigOnly is true, so this
 % population trace uses the same cell set as the scatter/bar below; otherwise
 % average across all ROIs.
 if popTraceSigOnly
@@ -238,18 +263,22 @@ if popTraceSigOnly
 else
     Tpop = anmlROIbyStim;
 end
-[groups,idC] = findgroups(Tpop.dBdelta);
-tmp = splitapply(@(x) {vertcat(x{:})},Tpop.dFF_PT_avg,groups);
-[G0,idC0] = findgroups(idC);
-dFF_PT_mean = splitapply(@(x) {cellfun(@nanmean,x,'uni',0)},tmp,G0);
-dFF_PT_sem = splitapply(@(x) {cellfun(@SEMcalc,x,'uni',0)},tmp,G0);
+
+% per-cell PT response (dFF_PT_avg) -> mean +/- between-cell SEM per
+% contrast. Same manuscript quantity that the peak/scatter/bar below quantify.
+% group each cell's avg trace by contrast -> [nCells x nFrames] per contrast,
+% then mean and between-cell SEM ACROSS CELLS. Dimension 1 is explicit so a
+% single-cell group is averaged across cells, not collapsed across time.
+groups = findgroups(Tpop.dBdelta);   % ascending dBdelta -> group r == dBdeltaList(r)
+dFF_PT_mean = splitapply(@(x) {nanmean(vertcat(x{:}),1)},Tpop.dFF_PT_avg,groups);
+dFF_PT_sem  = splitapply(@(x) {SEMcalc(vertcat(x{:}),1)},Tpop.dFF_PT_avg,groups);
 
 figure;
 hold on
 for r=1:ndBdelta
-    x=anmlROIbyStim(1,:).t_dFF_PT{1,1};
-    y=dFF_PT_mean{r,1}{1,1};
-    yerr=dFF_PT_sem{r,1}{1,1};
+    x=anmlROIbyStim(1,:).t_dFF_DRC{1,1};
+    y=dFF_PT_mean{r,1};
+    yerr=dFF_PT_sem{r,1};
     fillSEMplot(x,y,yerr,colors.lohiPre(r,:),colors.lohiTracePre(r,:));
 end
 
@@ -261,6 +290,7 @@ xlim(avgTraceXlim)
 hold off;
 title('Average across cell');
 legend('Low contrast', 'High contrast')
+
 %% Low vs High per ROI
 % pkByROI / valid computed above (Per-ROI peak + significance section).
 % valid = significant-in-both-contrasts cells.
@@ -284,7 +314,7 @@ title('peak dF/F per roi');
 axis equal;
 xlim(lims); ylim(lims);
 
-%% Bar graph
+%% Bar graph of peak dF/F per contrast, with scatter overlay
 group=cell(ndBdelta,1);
 pkResp_means=NaN(ndBdelta,1);
 pkResp_sems=NaN(ndBdelta,1);
