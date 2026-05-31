@@ -123,12 +123,20 @@ GUIs/
   TIFcatROIgui.m      — draw ROIs on a motion-corrected concatenated stack
   meanFluoROIvt.m     — interactive ROI selection and mean fluorescence extraction
 
+stimulusSpecific/
+  processBPN2P.m      — per-animal band-pass noise (BPN) dF/F + peak analysis
+  processRLF.m        — cohort rate/response-level function across animals
+  processCGC.m        — pure-tone-in-contrast (contrast gain control) analysis
+  processFRA.m        — frequency response area mapping from tifFileList
+
 helperFcns/
   tif/                — ScanImage tif reading (readSCIMtif, justLoadTif),
                         channel splitting (splitTifChans), writing (writeMoCorTifs)
   dFF/                — dF/F computation (dFoFcalc), peak response detection (pkFcalc)
   FRA/                — FRA map construction (FRAmap), BF extraction, d-prime calculation
-  dataOrg/            — FISSA output parsing, tifFileList assembly, stimulus table builders
+  RLF/                — rate-level functions (cellRLF, tableRLF) and plotting (plotRLF)
+  dataOrg/            — FISSA output parsing, tifFileList assembly, stimulus table
+                        builders (stimParam2ROI, combineDiffOnset)
   ROI/                — ROI mask ↔ polygon conversion, raw F extraction from masks
   plotting/           — SEM shaded plots (fillSEMplot), regression plots (regPlot),
                         paper-style formatting, figure export
