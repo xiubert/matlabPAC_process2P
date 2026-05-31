@@ -160,7 +160,11 @@ legend(hLine, arrayfun(@(v) sprintf('%d dB', v), dbVals, 'UniformOutput', false)
 grid on;
 hold off;
 
-%% --- Plot 3: population, all ROIs, pooled-trial SEM per dB ---
+%% --- Plot 3: population, all ROIs, between-cell SEM per dB ---
+% n in the SEM denominator is the number of cells (rows at this dB), NOT
+% the total number of trials. Average each cell's trials first via
+% dFF_avg, then take mean / SEM across cells (SEMcalc matches the
+% cohort-SEM idiom used in tableRLF and plotCohortData).
 dbVals = unique(anmlROIbyStim.BPNdBAmpl);
 
 figure; hold on;
@@ -178,11 +182,11 @@ for k = 1:numel(dbVals)
 
     timeMat = anmlROIbyStim.t_dFF{rows(1)};
 
-    allDffCell = anmlROIbyStim.dFF(rows);
-    dffMat = vertcat(allDffCell{:});
+    % per-cell trial mean (already a 1 x nFrames row per row of the table)
+    perCellMean = vertcat(anmlROIbyStim.dFF_avg{rows});   % nROIs x nFrames
 
-    mu  = mean(dffMat, 1, 'omitnan');
-    sem = std(dffMat, 0, 1, 'omitnan') ./ sqrt(sum(~isnan(dffMat), 1));
+    mu  = mean(perCellMean, 1, 'omitnan');
+    sem = SEMcalc(perCellMean, 1);
 
     [hPatch,hPlot] = fillSEMplot(timeMat,mu,sem,colors(k,:),colors(k,:));
     set(hPatch, 'FaceAlpha', 0.25)
