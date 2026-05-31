@@ -69,6 +69,41 @@ Loads the compiled cohort table and produces analysis figures. Each analysis blo
 
 ---
 
+### 4. Per-stimulus analyses — `stimulusSpecific/`
+
+After step 10 above, `stimParam2ROI` writes one stim-aligned table per stimulus family (e.g. `<animal>_anmlROI_BPNstimTable_raw.mat`, `<animal>_anmlROI_CGCstimTable.mat`). Each script below loads its family's table, adds dF/F and peak metrics, and plots. Each resolves `dataPath` via `uigetdir` if not already in the workspace.
+
+#### `processBPN2P.m` — band-pass noise (BPN), single animal
+
+Two-stage: reads the `_raw` table from `stimParam2ROI`, writes the processed `<animal>_anmlROI_BPNstimTable.mat` (re-running overwrites the processed file but never the `_raw` input).
+
+- Configurable pre-onset `baselineSec` (default 1 s); each row's dF/F is onset-normalized so stim onset lands at the same frame regardless of its recorded `BPNsOnset`
+- `combineDiffOnset` merges same-stim / different-onset rows (onset-aligning the raw F cells too)
+- Trial-averages dF/F per row (`dFF_avg`), then runs `pkFcalc` on the cell-average to get peak dF/F + significance
+- Plots: single ROI × dB, single ROI all dB, population (between-cell SEM per dB), peak dF/F vs. dB
+
+#### `processRLF.m` — rate/response-level function across a cohort
+
+Pools the **processed** BPN tables from multiple animals into one rate-level analysis.
+
+- Concatenates each animal's `anmlROIbyStim` (cells kept distinct by `animal`+`roiID`)
+- Builds per-cell RLFs and dB thresholds via `tableRLF`; cells are included only with ≥ `nConsec` consecutive significant dB levels
+- Plots the cohort-mean RLF (with per-cell traces) via `plotRLF`
+
+#### `processCGC.m` — pure-tone-in-contrast (contrast gain control)
+
+Single-stage; loads/saves `<animal>_anmlROI_CGCstimTable.mat`.
+
+- dF/F referenced first to a pre-DRC baseline (`dFF_DRC`), then additively to a pre-pure-tone baseline (`dFF_PT`), matching the manuscript method
+- Peak PT responses + significance from the **cell-average** trace (`dFF_PT_avg`), via `pkFcalc`
+- Plots: per-ROI PT traces (3×3 grid), population average trace, and low-vs-high contrast peak dF/F scatter / bar comparison
+
+#### `processFRA.m` — frequency response area mapping
+
+Operates on `tifFileList` directly (not via a per-stim table); computes per-cell FRA maps and best-frequency estimates.
+
+---
+
 ## External dependencies
 
 | Dependency | Language | Purpose |
