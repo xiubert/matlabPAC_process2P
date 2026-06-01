@@ -161,6 +161,12 @@ else
 end
 ui.roiGUI.ax = findall(ui.roiGUI.fh,'type','axes');
 
+%lock pixel aspect ratio to 1:1 so non-square frames (e.g. 256x128 at
+%10 Hz) are displayed without vertical stretch. Without this, imagesc
+%fills the axes box and skews the image, which also distorts drawn
+%ellipse ROIs (a visual circle becomes a 2:1 ellipse in pixel space).
+axis(ui.roiGUI.ax,'image')
+
 %initialize GUI settings
 ui.roiGUI.curROItype = 'Ellipse'; %default ROI on start
 
@@ -958,7 +964,8 @@ ui.roiGUI.bg.Visible = 'on';
             end
             ui.outputFigs.meanROIoutput.ax1.XLim = [0 size(sROI.img,2)];
             ui.outputFigs.meanROIoutput.ax1.YLim = [0 size(sROI.img,1)];
-            axis(ui.outputFigs.meanROIoutput.ax1,'square')
+            %'image' (not 'square') so non-square frames keep true aspect
+            axis(ui.outputFigs.meanROIoutput.ax1,'image')
             
             hLines = plot(ui.outputFigs.meanROIoutput.ax3, sROI.t, sROI.rawFroi(plotROIidx,:));
             xlabel(ui.outputFigs.meanROIoutput.ax3, 'Time (s)')

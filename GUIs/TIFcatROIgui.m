@@ -9,6 +9,12 @@ sROI.imgHeight = size(TIFcat,1);
 ui.roiGUI.fh = figure('Name','Choose frame and draw ROI','Visible','off');
 ui.roiGUI.plt = imagesc(sROI.img(:,:,1));
 ui.roiGUI.ax = findall(ui.roiGUI.fh,'type','axes');
+
+%lock pixel aspect ratio to 1:1 so non-square frames (e.g. 256x128 at
+%10 Hz) are displayed without vertical stretch. Without this, imagesc
+%fills the axes box and skews the image, which also distorts drawn
+%ellipse ROIs (a visual circle becomes a 2:1 ellipse in pixel space).
+axis(ui.roiGUI.ax,'image')
 ui.roiGUI.frameNoTxt = text(ui.roiGUI.ax,0.5,sROI.imgHeight-5,...
     'Frame: 1','Color','g');
 colormap(gray)
