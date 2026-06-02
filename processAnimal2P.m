@@ -102,6 +102,45 @@ if ~isempty(resp)
 else
     tifList.all = tifFiles;
 end
+
+% Auto-split each condition by frame size. 256x256 and 256x128 tifs cannot
+% share a motion-correction group: concatenate_files stacks frames with
+% cat(3,...) using the first tif's spatial dims, so a mixed-size group errors.
+% Spont 256x128 recordings are not necessarily their own treatment, so they
+% are separated here by reading each tif header. The full-frame (largest-area)
+% size keeps the condition's base name; smaller frames get a <H>x<W> suffix
+% (so e.g. 'postZX1' -> 'postZX1' + 'postZX1_128x256'). Single-size conditions
+% are left untouched.
+condNames = fieldnames(tifList);
+for c = 1:numel(condNames)
+    cond = condNames{c};
+    grp  = tifList.(cond);
+    fsz  = zeros(numel(grp),2);
+    for i = 1:numel(grp)
+        [~,hi] = readSCIMtif(fullfile(grp(i).folder,grp(i).name),'metaOnly');
+        fsz(i,:) = [hi.imHeight hi.imWidth];
+    end
+    [uSz,~,iu] = unique(fsz,'rows','stable');
+    if size(uSz,1) > 1
+        [~,primary] = max(uSz(:,1).*uSz(:,2));   % full frame keeps the base name
+        tifList = rmfield(tifList,cond);
+        newNames = strings(size(uSz,1),1);
+        for s = 1:size(uSz,1)
+            if s == primary
+                subName = cond;
+            else
+                subName = matlab.lang.makeValidName(...
+                    sprintf('%s_%dx%d',cond,uSz(s,1),uSz(s,2)));
+            end
+            tifList.(subName) = grp(iu==s);
+            newNames(s) = subName;
+        end
+        fprintf('Condition ''%s'' split by frame size -> %s\n', ...
+            cond, strjoin(cellstr(newNames)',', '));
+    end
+end
+clear condNames cond grp fsz hi uSz iu primary newNames s subName c i
+
 save(fullfile(dataPath,[animal '_tifCondSplitLegend.mat']),'tifList')
 
 %% 3. Motion correction via NoRMCorre
@@ -211,11 +250,68 @@ disp([regexp(dataPath,'[A-Z]{2}\d{4}','match','once') ...
     '_moCorrROI_' moCorN{moCorSeqN} '.mat saved to animal directory'])
 clear nTifs tifIDXinAllTifList
 
+%% 5b. Reuse 256x256 ROIs on any 256x128 (10 Hz spont) condition  [AUTO]
+% Runs automatically with no manual lever: any motion-correction condition
+% whose tifs are 256x128 is treated as a centered crop of the 256x256 field,
+% and its ROIs are remapped from the matching 256x256 condition's moCorrROI
+% file (drawn in sections 4-5). Only ROIs fully contained in the crop are
+% kept; IDs are preserved. No-op when no 256x128 condition is present.
+% remapROItoAcq ERRORS if the geometry is not the expected zoom-matched,
+% centered crop (e.g. an erroneous zoom=2), so a misconfigured session fails
+% loudly instead of mis-sampling cells.
+% PREREQUISITE: draw + save (sections 4-5) the 256x256 condition(s) first.
+moCorN = fieldnames(tifList);
+isCrop = false(1,numel(moCorN));
+for ci = 1:numel(moCorN)
+    [~,hCi] = readSCIMtif(fullfile(tifList.(moCorN{ci})(1).folder,...
+        tifList.(moCorN{ci})(1).name),'metaOnly');
+    isCrop(ci) = hCi.imHeight==128 && hCi.imWidth==256;
+end
+src256 = moCorN(~isCrop);
+for kc = find(isCrop)
+    tgtCond = moCorN{kc};
+    % resolve the 256x256 source condition: prefer one sharing a treatment
+    % token with the crop condition, else the sole 256x256 condition
+    match = src256(cellfun(@(s) contains(tgtCond,s) || contains(s,tgtCond), src256));
+    if isscalar(match)
+        srcCond = match{1};
+    elseif isscalar(src256)
+        srcCond = src256{1};
+    else
+        error('processAnimal2P:ambiguousSource',...
+            ['Cannot resolve a unique 256x256 ROI source for crop condition ''%s''. '...
+             'Candidates: %s. Rename conditions so the source shares a treatment token.'],...
+            tgtCond, strjoin(src256,', '));
+    end
+    srcROIpath = fullfile(dataPath,[animal '_moCorrROI_' srcCond '.mat']);
+    if exist(srcROIpath,'file')~=2
+        error('processAnimal2P:noSourceROI',...
+            'Draw 256x256 ROIs for condition ''%s'' (sections 4-5) before remapping ''%s''.',...
+            srcCond, tgtCond);
+    end
+    remapROIfile(srcROIpath,...
+        fullfile(tifList.(srcCond)(1).folder, tifList.(srcCond)(1).name),...
+        fullfile(tifList.(tgtCond)(1).folder, tifList.(tgtCond)(1).name),...
+        'outPath', fullfile(dataPath,[animal '_moCorrROI_' tgtCond '.mat']),...
+        'nTifs', numel(tifList.(tgtCond)),...
+        'tifIDXinAllTifList', ismember({tifFiles.name}',{tifList.(tgtCond).name}'),...
+        'moCorSeqN', kc);
+end
+clear isCrop ci hCi kc tgtCond srcCond match srcROIpath
+
 %% 6. Match ROIs across treatment conditions
-% Run only after sections 4-5 have been completed for ALL conditions.
+% Run only after sections 4-5 (and 5b for any 256x128 condition) are done.
 % intersectROIfiles keeps only ROIs present in every condition so that the
-% same set of cells is compared pre and post treatment.
-intersectROIfiles(dataPath,animal,moCorN,tifList,tifFiles)
+% same set of cells is compared pre and post treatment. 256x128 (spont)
+% conditions follow a separate analysis path and are EXCLUDED here so they
+% do not reduce the 256x256 stim ROI set (5 Hz and 10 Hz are never pooled).
+if exist('src256','var') && ~isempty(src256)
+    intersectConds = src256;
+else
+    intersectConds = fieldnames(tifList);
+end
+intersectROIfiles(dataPath,animal,intersectConds,tifList,tifFiles)
+clear intersectConds src256
 
 %% 7. Extract raw fluorescence per ROI and add to tifList
 %Add rawF, moCorr rawF, nFrames and frameRate to tifFiles struct
