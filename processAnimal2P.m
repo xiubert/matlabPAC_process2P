@@ -85,6 +85,43 @@ save(fullfile(dataPath,[animal '_tifFileLegend.mat']),'tifFiles')
 % clear Ycon rawCatImg options_nonrigid NoRMCorreParams moCorrImgNonRigid shifts2 template2
 % load(fullfile(dataPath,[animal '_tifFileLegend.mat']),'tifFiles')
 
+% --- Handle alternate-zoom acquisitions -----------------------------------
+% Standard acquisitions use one zoom (scanZoomFactor); both 256x256 and the
+% 256x128 10 Hz centered crop share it. A tif at a different zoom is a
+% different (magnified) field of view that cannot share a motion-correction
+% group or reuse the same ROIs. Policy: <=2 such tifs are stray
+% misconfigurations -> dropped + warned. >2 -> prompt to keep them as a
+% separate group (default No -> drop); headless/-batch runs take the default.
+zoomPerTif = zeros(numel(tifFiles),1);
+for i = 1:numel(tifFiles)
+    [~,hZ] = readSCIMtif(fullfile(tifFiles(i).folder,tifFiles(i).name),'metaOnly');
+    zoomPerTif(i) = hZ.hRoiManager.scanZoomFactor;
+end
+zoomMain = mode(zoomPerTif);
+altIDX = zoomPerTif ~= zoomMain;
+if any(altIDX)
+    altNames = {tifFiles(altIDX).name};
+    keepAlt = false;
+    if sum(altIDX) > 2 && usejava('desktop') && ~batchStartupOptionUsed
+        btn = questdlg(sprintf(['%d tifs are at a non-standard zoom (main zoom = %g):\n%s\n\n' ...
+            'Keep them as a separate motion-correction group/set? (No = drop them)'], ...
+            sum(altIDX), zoomMain, strjoin(altNames,', ')), ...
+            'Alternate-zoom tifs','Yes','No','No');
+        keepAlt = strcmp(btn,'Yes');
+    end
+    if keepAlt
+        fprintf('Keeping %d alternate-zoom tif(s) as separate geometry group(s): %s\n', ...
+            sum(altIDX), strjoin(altNames,', '));
+    else
+        warning('processAnimal2P:altZoomDropped',...
+            'Dropping %d alternate-zoom tif(s) (main zoom = %g): %s', ...
+            sum(altIDX), zoomMain, strjoin(altNames,', '));
+        tifFiles = tifFiles(~altIDX);
+        save(fullfile(dataPath,[animal '_tifFileLegend.mat']),'tifFiles')
+    end
+end
+clear zoomPerTif zoomMain altIDX altNames keepAlt btn hZ i
+
 %tifFiles filter
 resp = inputdlg('Enter comma separated list of treatment filters for tif files (eg: preZX1, postZX1). NOTE: CASE SENSITIVE. MUST MATCH TREATMENT IN tifFiles.treatment',...
     'Split motion correction by treatment?',[1 90]);
