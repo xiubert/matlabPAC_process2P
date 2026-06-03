@@ -56,6 +56,7 @@ arguments
     opts.nTifs              double     = []
     opts.tifIDXinAllTifList            = []
     opts.moCorSeqN          double     = []
+    opts.moCorTifNames                 = {}
     opts.neuropilMarginPx   (1,1) double {mustBeNonnegative} = 0
 end
 
@@ -84,6 +85,9 @@ if ~isempty(opts.outPath)
     out.tifIDXinAllTifList = opts.tifIDXinAllTifList;
     if ~isempty(opts.moCorSeqN)
         out.moCorSeqN = opts.moCorSeqN;
+    end
+    if ~isempty(opts.moCorTifNames)
+        out.moCorTifNames = opts.moCorTifNames;
     end
     save(opts.outPath, '-struct', 'out');
     fprintf('remapROIfile: saved %s\n', opts.outPath);
