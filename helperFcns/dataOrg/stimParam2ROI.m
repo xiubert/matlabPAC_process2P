@@ -71,11 +71,30 @@ animal = regexp(dataPath,'[A-Z]{2}\d{4}','match','once');
 % Linux ls(absPath) returns absolute paths, which then double up when
 % wrapped in fullfile(dataPath, ...) on the next line. dir() returns
 % basenames in .name, so the fullfile wrap stays correct everywhere.
-tmp0 = dir(fullfile(dataPath,[animal '_moCorrROI_*.mat']));
-tmp = load(fullfile(dataPath,tmp0(1).name),...
-    'moCorROI');
-moCorROI = tmp.moCorROI;
-clear tmp*
+% Load EVERY condition's ROI set, plus the tif names it covers. Conditions
+% can differ in ROI count when a 256x128 (spont) condition was remapped from
+% the 256x256 set (fewer cells survive the centered crop), so the matching set
+% is resolved PER stim group below via resolveROIset -- BY TIF MEMBERSHIP
+% (which condition's tifs the group belongs to), falling back to trace
+% row-count only when a group spans conditions or membership is unavailable.
+% Membership is required (not count alone) because two conditions can share an
+% ROI count; resolving by count would risk labelling a group's traces with the
+% wrong condition's ROI ID order.
+roiFiles = dir(fullfile(dataPath,[animal '_moCorrROI_*.mat']));
+roiSets = cell(numel(roiFiles),1);
+roiTifs = cell(numel(roiFiles),1);   % original tif names each ROI set covers
+for rf = 1:numel(roiFiles)
+    Srf = load(fullfile(dataPath,roiFiles(rf).name),'moCorROI','moCorTifNames');
+    roiSets{rf} = Srf.moCorROI;
+    if isfield(Srf,'moCorTifNames')
+        % stored as moCorr basenames (<orig>_NoRMCorre.tif); strip to originals
+        roiTifs{rf} = strrep(cellstr(Srf.moCorTifNames),'_NoRMCorre','');
+    else
+        roiTifs{rf} = {};   % legacy file: fall back to count matching
+    end
+end
+roiCounts = cellfun(@numel,roiSets);
+clear Srf rf
 
 load(fullfile(dataPath,[animal '_tifFileList.mat']),'tifFileList')
 
@@ -120,7 +139,7 @@ if sum(stimGroupIDX.ptStimIDX.tifFileList)>1
     % sort ROIs by stim params
     [anmlROIbyStim,stimTable] = anmlROIbyStimTable(animal,...
         tifFileList.stim(stimGroupIDX.ptStimIDX.tifFileList),...
-        moCorROI,...
+        resolveROIset(tifFileList.stim(stimGroupIDX.ptStimIDX.tifFileList),roiSets,roiTifs,roiCounts),...
         tifStimParamTable);
     outputTables{end+1} = 'tifStimParamTable';
     outputTables{end+1} = tifStimParamTable;
@@ -147,7 +166,7 @@ if sum(stimGroupIDX.BPNStimIDX.tifFileList)>1
     % sort ROIs by stim params
     [anmlROIbyStim,stimTable] = anmlROIbyStimTable(animal,...
         tifFileList.stim(stimGroupIDX.BPNStimIDX.tifFileList),...
-        moCorROI,...
+        resolveROIset(tifFileList.stim(stimGroupIDX.BPNStimIDX.tifFileList),roiSets,roiTifs,roiCounts),...
         tifStimParamTable);
     outputTables{end+1} = 'tifStimParamTable';
     outputTables{end+1} = tifStimParamTable;
@@ -191,7 +210,7 @@ if sum(stimGroupIDX.spontStimIDX.tifFileList)>1
     % sort ROIs by stim params
     [anmlROIbyStim,stimTable] = anmlROIbyStimTable(animal,...
         tifFileList.stim(stimGroupIDX.spontStimIDX.tifFileList),...
-        moCorROI,...
+        resolveROIset(tifFileList.stim(stimGroupIDX.spontStimIDX.tifFileList),roiSets,roiTifs,roiCounts),...
         tifStimParamTable);
     outputTables{end+1} = 'tifStimParamTable';
     outputTables{end+1} = tifStimParamTable;
@@ -216,7 +235,7 @@ if sum(stimGroupIDX.contrastChangeIDX.tifFileList)>1
     
     [anmlROIdContrast,dContrastTable] = anmlROIbyStimTable(animal,...
         tifFileList.stim(stimGroupIDX.contrastChangeIDX.tifFileList),...
-        moCorROI,...
+        resolveROIset(tifFileList.stim(stimGroupIDX.contrastChangeIDX.tifFileList),roiSets,roiTifs,roiCounts),...
         dContrastTifParamTable);
     
     outputTables{end+1} = 'dContrastTifParamTable';
@@ -230,3 +249,4 @@ if sum(stimGroupIDX.contrastChangeIDX.tifFileList)>1
         'dContrastTifParamTable','dataPath','tifFileList','fissaScaleFactor',...
         'stimGroupIDX','pulseLegend2P','-v7.3')
 end
+

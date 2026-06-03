@@ -85,6 +85,43 @@ save(fullfile(dataPath,[animal '_tifFileLegend.mat']),'tifFiles')
 % clear Ycon rawCatImg options_nonrigid NoRMCorreParams moCorrImgNonRigid shifts2 template2
 % load(fullfile(dataPath,[animal '_tifFileLegend.mat']),'tifFiles')
 
+% --- Handle alternate-zoom acquisitions -----------------------------------
+% Standard acquisitions use one zoom (scanZoomFactor); both 256x256 and the
+% 256x128 10 Hz centered crop share it. A tif at a different zoom is a
+% different (magnified) field of view that cannot share a motion-correction
+% group or reuse the same ROIs. Policy: <=2 such tifs are stray
+% misconfigurations -> dropped + warned. >2 -> prompt to keep them as a
+% separate group (default No -> drop); headless/-batch runs take the default.
+zoomPerTif = zeros(numel(tifFiles),1);
+for i = 1:numel(tifFiles)
+    [~,hZ] = readSCIMtif(fullfile(tifFiles(i).folder,tifFiles(i).name),'metaOnly');
+    zoomPerTif(i) = hZ.hRoiManager.scanZoomFactor;
+end
+zoomMain = mode(zoomPerTif);
+altIDX = zoomPerTif ~= zoomMain;
+if any(altIDX)
+    altNames = {tifFiles(altIDX).name};
+    keepAlt = false;
+    if sum(altIDX) > 2 && usejava('desktop') && ~batchStartupOptionUsed
+        btn = questdlg(sprintf(['%d tifs are at a non-standard zoom (main zoom = %g):\n%s\n\n' ...
+            'Keep them as a separate motion-correction group/set? (No = drop them)'], ...
+            sum(altIDX), zoomMain, strjoin(altNames,', ')), ...
+            'Alternate-zoom tifs','Yes','No','No');
+        keepAlt = strcmp(btn,'Yes');
+    end
+    if keepAlt
+        fprintf('Keeping %d alternate-zoom tif(s) as separate geometry group(s): %s\n', ...
+            sum(altIDX), strjoin(altNames,', '));
+    else
+        warning('processAnimal2P:altZoomDropped',...
+            'Dropping %d alternate-zoom tif(s) (main zoom = %g): %s', ...
+            sum(altIDX), zoomMain, strjoin(altNames,', '));
+        tifFiles = tifFiles(~altIDX);
+        save(fullfile(dataPath,[animal '_tifFileLegend.mat']),'tifFiles')
+    end
+end
+clear zoomPerTif zoomMain altIDX altNames keepAlt btn hZ i
+
 %tifFiles filter
 resp = inputdlg('Enter comma separated list of treatment filters for tif files (eg: preZX1, postZX1). NOTE: CASE SENSITIVE. MUST MATCH TREATMENT IN tifFiles.treatment',...
     'Split motion correction by treatment?',[1 90]);
@@ -102,6 +139,54 @@ if ~isempty(resp)
 else
     tifList.all = tifFiles;
 end
+
+% Auto-split each condition by scan GEOMETRY so every motion-correction group
+% is dimensionally AND optically uniform. 256x256 and 256x128 tifs cannot share
+% a group (concatenate_files stacks frames with cat(3,...) using the first
+% tif's dims, so mixed pixel dims error); and same-size frames at different
+% zoom are different fields of view that must not be co-registered or share
+% ROIs. The split key is [H W zoom mFast mSlow]. The main-zoom full frame keeps
+% the condition's base name; other groups get a <H>x<W> suffix (disambiguated
+% by zoom if needed, e.g. 'postZX1' -> 'postZX1' + 'postZX1_128x256'). Uniform
+% conditions are left untouched.
+condNames = fieldnames(tifList);
+for c = 1:numel(condNames)
+    cond = condNames{c};
+    grp  = tifList.(cond);
+    g    = zeros(numel(grp),5);   % [H W zoom mFast mSlow]
+    for i = 1:numel(grp)
+        [~,hi] = readSCIMtif(fullfile(grp(i).folder,grp(i).name),'metaOnly');
+        rm = hi.hRoiManager;
+        g(i,:) = [hi.imHeight hi.imWidth rm.scanZoomFactor ...
+                  rm.scanAngleMultiplierFast rm.scanAngleMultiplierSlow];
+    end
+    [uG,~,iu] = unique(g,'rows','stable');
+    if size(uG,1) > 1
+        % primary (keeps base name) = largest-area frame at the main zoom
+        score = uG(:,1).*uG(:,2);
+        score(uG(:,3)~=mode(g(:,3))) = -inf;
+        [~,primary] = max(score);
+        tifList = rmfield(tifList,cond);
+        newNames = strings(size(uG,1),1);
+        for s = 1:size(uG,1)
+            if s == primary
+                subName = cond;
+            else
+                subName = sprintf('%s_%dx%d',cond,uG(s,1),uG(s,2));
+                if isfield(tifList,subName) || any(strcmp(newNames,subName))
+                    subName = sprintf('%s_z%g',subName,uG(s,3));   % disambiguate by zoom
+                end
+                subName = matlab.lang.makeValidName(subName);
+            end
+            tifList.(subName) = grp(iu==s);
+            newNames(s) = subName;
+        end
+        fprintf('Condition ''%s'' split by geometry -> %s\n', ...
+            cond, strjoin(cellstr(newNames)',', '));
+    end
+end
+clear condNames cond grp g hi rm uG iu score primary newNames s subName c i
+
 save(fullfile(dataPath,[animal '_tifCondSplitLegend.mat']),'tifList')
 
 %% 3. Motion correction via NoRMCorre
@@ -202,20 +287,82 @@ TIFcatROIgui(moCorrImgNonRigid.(moCorN{moCorSeqN}))
 
 nTifs = length(tifList.(moCorN{moCorSeqN}));
 tifIDXinAllTifList = ismember({tifFiles.name}',{tifList.(moCorN{moCorSeqN}).name}');
+% moCorr tif basenames for this condition (what writeMoCorTifs wrote to
+% NoRMCorred/), in order. Lets the FISSA driver build per-group image lists
+% and §9 map FISSA trials back to tifs by name.
+moCorTifNames = strrep({tifList.(moCorN{moCorSeqN}).name}','.tif','_NoRMCorre.tif');
 
 save([dataPath filesep ...
     regexp(dataPath,'[A-Z]{2}\d{4}','match','once') ...
     '_moCorrROI_' moCorN{moCorSeqN} '.mat'],...
-    'moCorROI','moCorSeqN','nTifs','tifIDXinAllTifList')
+    'moCorROI','moCorSeqN','nTifs','tifIDXinAllTifList','moCorTifNames')
 disp([regexp(dataPath,'[A-Z]{2}\d{4}','match','once') ...
     '_moCorrROI_' moCorN{moCorSeqN} '.mat saved to animal directory'])
-clear nTifs tifIDXinAllTifList
+clear nTifs tifIDXinAllTifList moCorTifNames
+
+%% 5b. Reuse 256x256 ROIs on any 256x128 (10 Hz spont) condition  [AUTO]
+% Runs automatically with no manual lever: any motion-correction condition
+% whose tifs are 256x128 is treated as a centered crop of the 256x256 field,
+% and its ROIs are remapped from the matching 256x256 condition's moCorrROI
+% file (drawn in sections 4-5). Only ROIs fully contained in the crop are
+% kept; IDs are preserved. No-op when no 256x128 condition is present.
+% remapROItoAcq ERRORS if the geometry is not the expected zoom-matched,
+% centered crop (e.g. an erroneous zoom=2), so a misconfigured session fails
+% loudly instead of mis-sampling cells.
+% PREREQUISITE: draw + save (sections 4-5) the 256x256 condition(s) first.
+moCorN = fieldnames(tifList);
+isCrop = false(1,numel(moCorN));
+for ci = 1:numel(moCorN)
+    [~,hCi] = readSCIMtif(fullfile(tifList.(moCorN{ci})(1).folder,...
+        tifList.(moCorN{ci})(1).name),'metaOnly');
+    isCrop(ci) = hCi.imHeight==128 && hCi.imWidth==256;
+end
+src256 = moCorN(~isCrop);
+for kc = find(isCrop)
+    tgtCond = moCorN{kc};
+    % resolve the 256x256 source condition: prefer one sharing a treatment
+    % token with the crop condition, else the sole 256x256 condition
+    match = src256(cellfun(@(s) contains(tgtCond,s) || contains(s,tgtCond), src256));
+    if isscalar(match)
+        srcCond = match{1};
+    elseif isscalar(src256)
+        srcCond = src256{1};
+    else
+        error('processAnimal2P:ambiguousSource',...
+            ['Cannot resolve a unique 256x256 ROI source for crop condition ''%s''. '...
+             'Candidates: %s. Rename conditions so the source shares a treatment token.'],...
+            tgtCond, strjoin(src256,', '));
+    end
+    srcROIpath = fullfile(dataPath,[animal '_moCorrROI_' srcCond '.mat']);
+    if exist(srcROIpath,'file')~=2
+        error('processAnimal2P:noSourceROI',...
+            'Draw 256x256 ROIs for condition ''%s'' (sections 4-5) before remapping ''%s''.',...
+            srcCond, tgtCond);
+    end
+    remapROIfile(srcROIpath,...
+        fullfile(tifList.(srcCond)(1).folder, tifList.(srcCond)(1).name),...
+        fullfile(tifList.(tgtCond)(1).folder, tifList.(tgtCond)(1).name),...
+        'outPath', fullfile(dataPath,[animal '_moCorrROI_' tgtCond '.mat']),...
+        'nTifs', numel(tifList.(tgtCond)),...
+        'tifIDXinAllTifList', ismember({tifFiles.name}',{tifList.(tgtCond).name}'),...
+        'moCorTifNames', strrep({tifList.(tgtCond).name}','.tif','_NoRMCorre.tif'),...
+        'moCorSeqN', kc);
+end
+clear isCrop ci hCi kc tgtCond srcCond match srcROIpath
 
 %% 6. Match ROIs across treatment conditions
-% Run only after sections 4-5 have been completed for ALL conditions.
+% Run only after sections 4-5 (and 5b for any 256x128 condition) are done.
 % intersectROIfiles keeps only ROIs present in every condition so that the
-% same set of cells is compared pre and post treatment.
-intersectROIfiles(dataPath,animal,moCorN,tifList,tifFiles)
+% same set of cells is compared pre and post treatment. 256x128 (spont)
+% conditions follow a separate analysis path and are EXCLUDED here so they
+% do not reduce the 256x256 stim ROI set (5 Hz and 10 Hz are never pooled).
+if exist('src256','var') && ~isempty(src256)
+    intersectConds = src256;
+else
+    intersectConds = fieldnames(tifList);
+end
+intersectROIfiles(dataPath,animal,intersectConds,tifList,tifFiles)
+clear intersectConds src256
 
 %% 7. Extract raw fluorescence per ROI and add to tifList
 %Add rawF, moCorr rawF, nFrames and frameRate to tifFiles struct
@@ -260,14 +407,38 @@ end
 
 %% 9. Parse FISSA output: separate map vs. stim trials, apply neuropil scaling
 
-%load FISSA output: (again from exp.save_to_matlab() in 'FISSAscript_splitPrePost.py')
+fissaDir = fullfile(dataPath,'NoRMCorred','FISSAoutput');
+
+% fissaScaleFactor scales how aggressively neuropil is subtracted:
+%   corrected = ROI - scaleFactor * neuropil   (0.8 = common conservative default)
+fissaScaleFactor = str2double(inputdlg('ENTER FACTOR BY WHICH TO SCALE FISSA SUBTRACTION (eg. 0.8): ',...
+    'FISSA SCALING FACTOR',[1 80],{'0.8'}));
+
+if exist(fullfile(fissaDir,'groups.json'),'file')==2
+% ===== GROUPED PATH: per-ROI-count FISSA outputs (mixed 256x256 / 256x128) =====
+% FISSA was run once per ROI-count group (different frame sizes cannot share a
+% run; see FISSAviaMatlab_prePostTreatment.py). Build tifFileList.stim/.map
+% from tifList (map split by treatment), then attach each tif's neuropil traces
+% from the matching group, by name, via mergeFISSAgroups. Each tif's trace row
+% count follows its own group's ROI count (e.g. 256x256 stim vs 256x128 spont).
+C = struct2cell(tifList);
+allcond = vertcat(C{:});
+isMap = contains({allcond.treatment}','map');
+tifFileList = struct();
+tifFileList.stim = allcond(~isMap);
+if any(isMap)
+    tifFileList.map = allcond(isMap);
+end
+tifFileList = mergeFISSAgroups(tifFileList, fissaDir, fissaScaleFactor);
+FISSAoutput = fileread(fullfile(fissaDir,'groups.json'));   % manifest text, for provenance
+
+else
+% ===== LEGACY single-output path (unchanged: no 256x128, one ROI count) =====
 %FISSA was given moCorr tiffs and ROIs from concatenated moCorr Tifs
-FISSAoutput = load(fullfile(dataPath,'NoRMCorred','FISSAoutput','matlab.mat'));
+FISSAoutput = load(fullfile(fissaDir,'matlab.mat'));
 
 %in 'result', for a given cell and trial there is a n x numTraceFrames double;
 %row 1 is ROI trace, rows 2->n are traces from neuropil regions around ROI
-%in 'ROIs', for a given cell and trial there is a n x 1 cell of doubles,
-%the doubles are nPoints x 2, col1=Y,col2=X; 1st cell is ROI,  2->n are neuropil regions around ROI
 
 %split map and stim from FISSAoutput
 if ~exist('FRAmapIDX')
@@ -283,7 +454,7 @@ if any(FRAmapIDX)
     end
     tifFileList.map = tifFiles(FRAmapIDX);
     tifFileList.stim = tifFiles(~FRAmapIDX);
-    
+
     fID = fieldnames(FISSAoutput);
     trials.all = fieldnames(FISSAoutput.raw.cell0);
     trials.BF = strcat(cellstr(repmat('trial',[sum(FRAmapIDX) 1])),cellstr(string(0:sum(FRAmapIDX)-1))');
@@ -321,18 +492,12 @@ else
     clear tmp
 end
 
+tifFileList = FISSAoutput2tifFileList(FISSAoutput,tifFileList,fissaScaleFactor);
+end
+
 %if updating existing tifFileList w/ FISSAoutput:
 % [fName,fPath] = uigetfile('*tifFileList.mat','Locate [ANIMAL]_tifFileList.mat...');
 % load(fullfile(fPath,fName))
-% animal = regexp(dataPath,'[A-Z]{2}\d{4}','match');
-% animal = animal{1};
-
-% fissaScaleFactor scales how aggressively neuropil is subtracted:
-%   corrected = ROI - scaleFactor * neuropil
-% Values < 1 reduce over-subtraction; 0.8 is a common conservative default.
-fissaScaleFactor = str2double(inputdlg('ENTER FACTOR BY WHICH TO SCALE FISSA SUBTRACTION (eg. 0.8): ',...
-    'FISSA SCALING FACTOR',[1 80],{'0.8'}));
-tifFileList = FISSAoutput2tifFileList(FISSAoutput,tifFileList,fissaScaleFactor);
 
 save(fullfile(dataPath,[animal '_tifFileList.mat']),...
         'dataPath','FISSAoutput','tifFileList','fissaScaleFactor','-v7.3')
