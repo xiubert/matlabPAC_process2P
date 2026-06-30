@@ -3,6 +3,7 @@
 %   Loads <animal>_anmlROI_CGCstimTable.mat, computes dF/F referenced to the
 %   DRC baseline and then to the pre-pure-tone (PT) baseline, detects peak PT
 %   responses + significance, and plots per-ROI and population summaries.
+%   Also works for aggregated table from multiple animals
 %
 %   METHOD (matches matlabPAC_CGCplot/plotDataTable.m and the manuscript):
 %     dFF_DRC          = (F - F0_DRC)/F0_DRC, F0_DRC = mean F over [-1.2 0] s (pre DRC onset).
@@ -56,11 +57,11 @@ anmlROIbyStim.t_total = rowfun(@(F,fr,trigDelay) ...
     'ExtractCellContents',true,'OutputFormat','uniform');
 
 anmlROIbyStim.roiID = string(strtrim(cellstr(anmlROIbyStim.roiID)));
-roiList = unique(anmlROIbyStim.roiID, 'stable');
-nCell = numel(roiList);   % number of cells (unique ROIs); not stored in the .mat
+roiList = unique(anmlROIbyStim(:, {'roiID', 'animal'}), 'stable');
+nCell = height(roiList);   % number of cells (unique ROIs&animals); not stored in the .mat
 remROIplotNo = rem(nCell,ROIperFig);
 roiFigNo = floor(nCell/ROIperFig)+(remROIplotNo>=1);
-dBdeltaList = unique(stimTable.dBdelta);
+dBdeltaList = unique(anmlROIbyStim.dBdelta);
 ndBdelta=length(dBdeltaList);
 
 % Guard: the PT F0 window (tBasePT) must lie entirely before pure-tone onset,
@@ -100,7 +101,7 @@ anmlROIbyStim.dFF_DRC_avg = rowfun(@(F) ...
     anmlROIbyStim,'InputVariables',{'dFF_DRC'},...
     'ExtractCellContents',true,'OutputFormat','uniform');
 
-    %% PLOT dFF DRC
+%% PLOT dFF DRC
 %initialize subplots for multiple ROI per fig
 for roiFigN = 1:roiFigNo
     figure('Name','dF/F responses for each ROI');
@@ -108,8 +109,8 @@ for roiFigN = 1:roiFigNo
         curROIno = roiFigN*ROIperFig - ROIperFig + roiSubPlotN;
         if curROIno <= nCell
             subplot(3,3,roiSubPlotN);
-            roi=roiList(curROIno);
-            rows=anmlROIbyStim(anmlROIbyStim.roiID==roi,:);
+            rows = anmlROIbyStim(anmlROIbyStim.roiID==roiList.roiID(curROIno) & ...
+                anmlROIbyStim.animal == roiList.animal(curROIno), :);
             hold on;
             label=strings(height(rows),1);
             for r=1:height(rows)
@@ -124,9 +125,9 @@ for roiFigN = 1:roiFigNo
             end
             xlabel('time/s')
             ylabel('dF/F')
-            xline(PTonsetSec,'--')
+            xline(PTonsetSec,'--');
             hold off;
-            title('ROI'+string(curROIno));
+            title({'Animal: '+roiList.animal(curROIno), 'ROI: '+roiList.roiID(curROIno)});
             legend(label(1), label(2),'pure tone')
         end
         clear curROIno
@@ -170,8 +171,8 @@ for roiFigN = 1:roiFigNo
         curROIno = roiFigN*ROIperFig - ROIperFig + roiSubPlotN;
         if curROIno <= nCell
             subplot(3,3,roiSubPlotN);
-            roi=roiList(curROIno);
-            rows=anmlROIbyStim(anmlROIbyStim.roiID==roi,:);
+            rows = anmlROIbyStim(anmlROIbyStim.roiID==roiList.roiID(curROIno) & ...
+                anmlROIbyStim.animal == roiList.animal(curROIno), :);
             hold on;
             label=strings(height(rows),1);
             for r=1:height(rows)
@@ -186,9 +187,9 @@ for roiFigN = 1:roiFigNo
             end
             xlabel('time/s')
             ylabel('dF/F')
-            xline(PTonsetSec,'--')
+            xline(PTonsetSec,'--');
             hold off;
-            title('ROI'+string(curROIno));
+            title({'Animal: '+roiList.animal(curROIno), 'ROI: '+roiList.roiID(curROIno)});
             legend(label(1), label(2),'pure tone')
         end
         clear curROIno
@@ -233,7 +234,8 @@ anmlROIbyStim.pkPT = tmp(:,3);
 pkByROI  = nan(nCell,ndBdelta);
 sigByROI = false(nCell,ndBdelta);
 for i = 1:nCell
-    rows = anmlROIbyStim(anmlROIbyStim.roiID==roiList(i),:);
+    rows = anmlROIbyStim(anmlROIbyStim.roiID==roiList.roiID(i) & ...
+        anmlROIbyStim.animal == roiList.animal(i), :);
     for k = 1:ndBdelta
         sel = rows.dBdelta==dBdeltaList(k);
         v = cell2mat(rows.pkPT(sel));
@@ -259,7 +261,7 @@ save(fullfile(dataPath,[animal '_anmlROI_CGCstimTable.mat']),"anmlROIbyStim",'-a
 % population trace uses the same cell set as the scatter/bar below; otherwise
 % average across all ROIs.
 if popTraceSigOnly
-    Tpop = anmlROIbyStim(ismember(anmlROIbyStim.roiID,roiList(valid)),:);
+    Tpop = innerjoin(anmlROIbyStim, roiList(valid, :));
 else
     Tpop = anmlROIbyStim;
 end
@@ -285,7 +287,7 @@ end
 
 xlabel('time/s')
 ylabel('dF/F')
-xline(PTonsetSec,'--','pure tone')
+xline(PTonsetSec,'--','pure tone');
 xlim(avgTraceXlim)
 hold off;
 title('Average across cell');
@@ -296,7 +298,7 @@ legend('Low contrast', 'High contrast')
 % valid = significant-in-both-contrasts cells.
 x = pkByROI(valid,2);   % high contrast (dBdeltaList(2))
 y = pkByROI(valid,1);   % low contrast  (dBdeltaList(1))
-roiList_pos = roiList(valid);
+roiList_pos = roiList(valid,:);
 
 % make scatter
 figure;
@@ -387,7 +389,7 @@ hold off;
 % Plots raw (un-normalized) average fluorescence per ROI, ROIperFig per
 % figure (3x3), one trace per contrast. Useful for spotting bleaching/motion
 % artifacts that dF/F normalization would hide.
-runRawFdiagnostic = false;   % set true to generate the raw-F QC figures
+runRawFdiagnostic = true;   % set true to generate the raw-F QC figures
 
 if runRawFdiagnostic
     % raw F averaged across stim repetitions (1 x nFrames per row)
@@ -402,8 +404,8 @@ if runRawFdiagnostic
             curROIno = roiFigN*ROIperFig - ROIperFig + roiSubPlotN;
             if curROIno <= nCell
                 subplot(3,3,roiSubPlotN);
-                roi=roiList(curROIno);
-                rows=anmlROIbyStim(anmlROIbyStim.roiID==roi,:);
+                rows = anmlROIbyStim(anmlROIbyStim.roiID==roiList.roiID(curROIno) & ...
+                    anmlROIbyStim.animal == roiList.animal(curROIno), :);
                 hold on;
                 label=strings(height(rows),1);
                 for r=1:height(rows)
@@ -418,9 +420,9 @@ if runRawFdiagnostic
                 end
                 xlabel('time/s')
                 ylabel('raw F')
-                xline(PTonsetSec,'--','pure tone')
+                xline(PTonsetSec,'--','pure tone');
                 hold off;
-                title('ROI'+string(curROIno));
+                title({'Animal: '+roiList.animal(curROIno), 'ROI: '+roiList.roiID(curROIno)});
                 legend(label)
             end
             clear curROIno
