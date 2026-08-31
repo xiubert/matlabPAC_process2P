@@ -26,6 +26,7 @@ function out = tableRLF(T,varargin)
 %       .semRLF        1 x nDB SEM across included cells
 %       .nIncluded     scalar count of included cells
 %       .nTotal        scalar count of cells in T
+%       .nConsec       min consecutive sig levels used for inclusion
 %
 %   See also cellRLF, plotRLF.
 
@@ -81,4 +82,5 @@ out.meanRLF   = mean(RLFincl,1,'omitnan');
 out.semRLF    = SEMcalc(RLFincl,1);
 out.nIncluded = sum(included);
 out.nTotal    = nCell;
+out.nConsec   = nConsec;
 end
