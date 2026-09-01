@@ -248,6 +248,37 @@ if excludeNeg && FISSA && isMultiPulse
             strjoin(onsetVar,', '));
     end
     onsetVar = onsetVar{1};
+
+    % Hold the response window to a single length across the whole group:
+    % the shortest any (tif, onset) pair can supply. Left to run to the end
+    % of the ISI it varies with onset — at 5 Hz with ISI 4 s a 1 s onset
+    % yields 14 frames and a 2 s onset only 9 — so early-onset epochs would
+    % get ~1.7x more chances to trip criterion 1 purely from window length.
+    % Computed per call, i.e. per animal per stim family: every BPN animal
+    % here is 5 Hz / ISI 4 s / onsets {1,2} and so resolves to 9 frames, but
+    % a group recorded with a different ISI or onset set screens at its own
+    % length, which matters when pooling animals downstream.
+    respLenFrames = Inf;
+    for k = 1:height(tifStimParamTable)
+        if tifStimParamTable.totalPulses(k) <= 1, continue; end
+        kFrameRate = tifFileListStim(k).frameRate;
+        kOnsets    = cell2mat(tifStimParamTable.(onsetVar){k,1});
+        respLenFrames = min([respLenFrames; ...
+            kFrameRate*tifStimParamTable{k,'ISI'} - ...
+            round((kOnsets+respSkipSec)*kFrameRate)]);
+    end
+    if respLenFrames < 3
+        error('anmlROIbyStimTable:ShortResponseWindow', ...
+            ['Common response window is %d frame(s); criterion 1 rolls ' ...
+             'over 3 consecutive frames and needs at least 3.'],respLenFrames);
+    end
+    % criterion 2 rolls over the baseline window, so that needs 3 frames too
+    if baselineSec*min([tifFileListStim.frameRate]) < 3
+        error('anmlROIbyStimTable:ShortBaselineWindow', ...
+            ['baselineSec (%.3g s) gives fewer than 3 baseline frames at ' ...
+             '%.3g Hz; criterion 2 needs at least 3.'], ...
+            baselineSec,min([tifFileListStim.frameRate]));
+    end
 end
 
 %get roiF data by tif file
@@ -302,13 +333,19 @@ for i = 1:length(tifFileListStim)
                 baseRoll3 = cell(totalPulse,1);
                 failC1 = false(totalPulse,1);
                 for j = 1:totalPulse
-                    baseIDX = (onsets(j)-baselineSec)*frameRate+1 : onsets(j)*frameRate;
+                    % round(): frame indices must be integers, and only
+                    % some frameRate/onset combinations land on them exactly
+                    baseIDX = round((onsets(j)-baselineSec)*frameRate)+1 : ...
+                              round(onsets(j)*frameRate);
                     base = epochAvg{j,1}(baseIDX);
                     baseMean(j)  = mean(base,2);
                     baseSD(j)    = std(base,0,2);
                     baseRoll3{j} = rollMean3(base);
 
-                    resp = epochAvg{j,1}((onsets(j)+respSkipSec)*frameRate+1:framesPerPulse);
+                    % respSkipSec skips the onset transient; the window is
+                    % then a fixed respLenFrames long for every epoch
+                    respStart = round((onsets(j)+respSkipSec)*frameRate)+1;
+                    resp = epochAvg{j,1}(respStart:respStart+respLenFrames-1);
 
                     % C1a: some run of 3 consecutive response frames averages
                     %      more than nSD below this epoch's own baseline
