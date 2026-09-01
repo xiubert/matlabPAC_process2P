@@ -32,12 +32,17 @@ function [anmlROIbyStim,stimTable] = anmlROIbyStimTable(animal,tifFileListStim,m
 %                        (scalar columns) or multi-pulse (cell columns
 %                        carrying N-by-1 per-pulse values plus a
 %                        totalPulses column with totalPulses>1).
-%     excludeNeg       - (optional, default true) logical. When true,
-%                        multi-pulse groups are screened for movement
-%                        artifacts and failing stimulus epochs are
-%                        blanked to NaN. Has no effect on single-pulse
-%                        groups, which never reach the screening code.
-%                        See 'Movement rejection' below.
+%     excludeNeg       - (optional, default true) logical. Screens for
+%                        movement artifacts and blanks failing stimulus
+%                        epochs to NaN. Takes effect ONLY on tifs that
+%                        hold more than one stimulus epoch, and only when
+%                        all of these hold: a totalPulses column with
+%                        totalPulses>1 for that tif, exactly one per-pulse
+%                        *sOnset column, and FISSA traces present. A tif
+%                        holding a single stimulus is left untouched
+%                        whatever this is set to, because both criteria
+%                        compare an epoch against the epoch before it in
+%                        the same recording. See 'Movement rejection'.
 %
 %   Outputs:
 %     anmlROIbyStim - (nROI * nUniqueStim) x M table:
@@ -71,13 +76,27 @@ function [anmlROIbyStim,stimTable] = anmlROIbyStimTable(animal,tifFileListStim,m
 %        Multi-pulse tifs are sliced into per-pulse windows using
 %        frameRate, trigDelay, and ISI before concatenation; single-pulse
 %        tifs are taken whole.
-%     6. (multi-pulse + FISSA + excludeNeg only) Screen each stimulus
-%        epoch for movement artifacts and blank the failures to NaN.
-%        See 'Movement rejection' below.
+%     6. (only for tifs holding multiple stimulus epochs; see 'Movement
+%        rejection' below for the full gate) Screen each stimulus epoch
+%        for movement artifacts and blank the failures to NaN.
 %     7. Stitch the per-ROI cells back onto TanmlROI (which carries
 %        animal+roiID+stimID + the replicated stim params).
 %
-%   Movement rejection (excludeNeg, multi-pulse groups only):
+%   Movement rejection (excludeNeg):
+%     Screening runs only where ALL of the following hold, and is skipped
+%     otherwise:
+%       - excludeNeg is true (the default),
+%       - FISSA traces are present,
+%       - the tif carries totalPulses>1, i.e. multiple stimulus epochs in
+%         one recording, and
+%       - tifStimParamTable has exactly one per-pulse *sOnset column.
+%
+%     Of the families in this pipeline that is BPN alone. CGC has no
+%     totalPulses column at all and takes the single-pulse branch. Spont
+%     does set totalPulses>1, but carries no onset (there is no stimulus,
+%     only SpontMsStimLen), so neither criterion is defined for it and it
+%     is skipped with a warning rather than an error.
+%
 %     A tif that carries totalPulses>1 holds many stimulus epochs in one
 %     recording, so an epoch can be judged against its own pre-onset
 %     baseline and against the epoch before it. Two criteria are applied,
@@ -280,18 +299,30 @@ rollMean3   = @(v) (v(1:end-2) + v(2:end-1) + v(3:end)) / 3;
 % single-pulse branch below.
 isMultiPulse = ismember('totalPulses',tifStimParamTable.Properties.VariableNames) ...
     && any(tifStimParamTable.totalPulses > 1);
-if excludeNeg && FISSA && isMultiPulse
+screenMovement = excludeNeg && FISSA && isMultiPulse;
+if screenMovement
     onsetVar = tifStimParamTable.Properties.VariableNames( ...
         endsWith(tifStimParamTable.Properties.VariableNames,'sOnset'));
-    if isempty(onsetVar)
-        error('anmlROIbyStimTable:NoOnsetColumn', ...
-            ['excludeNeg requires a per-pulse *sOnset column (e.g. ' ...
-             'BPNsOnset); none found in tifStimParamTable.']);
-    elseif ~isscalar(onsetVar)
+    if ~isscalar(onsetVar) && ~isempty(onsetVar)
         error('anmlROIbyStimTable:AmbiguousOnsetColumn', ...
             'Multiple *sOnset columns found (%s); ambiguous.', ...
             strjoin(onsetVar,', '));
     end
+end
+if screenMovement && isempty(onsetVar)
+    % Multi-epoch is necessary but not sufficient: both criteria are
+    % defined relative to a stimulus onset. Spont sets totalPulses>1 but
+    % carries no onset at all (there is no stimulus - its only per-pulse
+    % field is SpontMsStimLen), so there is no baseline/response split to
+    % test. Skip rather than fail: excludeNeg defaults true, and erroring
+    % here would break a family the screening was never meant to cover.
+    warning('anmlROIbyStimTable:NoOnsetColumn', ...
+        ['excludeNeg is set, but tifStimParamTable has no per-pulse ' ...
+         '*sOnset column, so movement screening is undefined for this ' ...
+         'stim family. Skipping screening.']);
+    screenMovement = false;
+end
+if screenMovement
     onsetVar = onsetVar{1};
 
     % Hold the response window to a single length across the whole group:
@@ -350,7 +381,7 @@ for i = 1:length(tifFileListStim)
             % within their tif: criterion 2 needs each epoch's immediate
             % predecessor, and that adjacency is destroyed by the
             % pivot-by-stimID further down.
-            if excludeNeg
+            if screenMovement
                 % Movement shifts the whole field of view, so each verdict
                 % is made once per epoch on the across-ROI mean trace
                 % (dim 1 = ROI) and a failing epoch is blanked for all ROIs.
