@@ -1,9 +1,10 @@
-function [anmlROIbyStim,stimTable] = anmlROIbyStimTable(animal,tifFileListStim,moCorROI,tifStimParamTable)
+function [anmlROIbyStim,stimTable] = anmlROIbyStimTable(animal,tifFileListStim,moCorROI,tifStimParamTable,excludeNeg)
 % anmlROIbyStimTable  Build a per-(ROI, unique-stim) response table for
 %                     one animal, plus a deduplicated stim parameter table.
 %
 %   [anmlROIbyStim, stimTable] = anmlROIbyStimTable(animal, ...
 %                                tifFileListStim, moCorROI, tifStimParamTable)
+%   [...] = anmlROIbyStimTable(..., tifStimParamTable, excludeNeg)
 %
 %   Pivots per-tif fluorescence traces into a long-form table keyed by
 %   (animal, roiID, stimID), so all repetitions of a unique stimulus
@@ -31,6 +32,12 @@ function [anmlROIbyStim,stimTable] = anmlROIbyStimTable(animal,tifFileListStim,m
 %                        (scalar columns) or multi-pulse (cell columns
 %                        carrying N-by-1 per-pulse values plus a
 %                        totalPulses column with totalPulses>1).
+%     excludeNeg       - (optional, default true) logical. When true,
+%                        multi-pulse groups are screened for movement
+%                        artifacts and failing stimulus epochs are
+%                        blanked to NaN. Has no effect on single-pulse
+%                        groups, which never reach the screening code.
+%                        See 'Movement rejection' below.
 %
 %   Outputs:
 %     anmlROIbyStim - (nROI * nUniqueStim) x M table:
@@ -77,6 +84,14 @@ function [anmlROIbyStim,stimTable] = anmlROIbyStimTable(animal,tifFileListStim,m
 %     - This function errors if the sort-vs-unique reconciliation in the
 %       post/pre flip disagrees ('something went wrong here'); that
 %       indicates a unique/sortrows mismatch on the 'treatment' column.
+
+arguments
+    animal
+    tifFileListStim
+    moCorROI
+    tifStimParamTable
+    excludeNeg (1,1) logical = true
+end
 
 % list of fields inside stim to equalize
 fields = {'rawFroi','moCorRawFroi','fissaFroi','SCALEDfissaFroi'};
