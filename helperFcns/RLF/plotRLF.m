@@ -31,8 +31,17 @@ if isempty(ax); ax = gca; end
 hBar = bar(ax,rlf.dBlist,rlf.meanRLF,...
     'FaceColor',col,'EdgeColor','none','BarWidth',0.7);
 hold(ax,'on');
-hErr = errorbar(ax,rlf.dBlist,rlf.meanRLF,rlf.semRLF,...
-    'LineStyle','none','Color','k','LineWidth',1.2,'CapSize',8);
+
+% Error bars only when the SEM is meaningful. tableRLF returns all-NaN semRLF
+% below 2 included cells, so a single-cell RLF draws no bar rather than a
+% zero-width one. Condition is written on semRLF (not the newer showBand
+% field) so RLF structs saved before that field existed still work.
+if any(~isnan(rlf.semRLF))
+    hErr = errorbar(ax,rlf.dBlist,rlf.meanRLF,rlf.semRLF,...
+        'LineStyle','none','Color','k','LineWidth',1.2,'CapSize',8);
+else
+    hErr = gobjects(0);
+end
 
 if showCells && ~isempty(rlf.RLFincl)
     [nC,nDB] = size(rlf.RLFincl);
@@ -44,7 +53,24 @@ end
 
 xlabel(ax,'dB SPL');
 ylabel(ax,'peak \DeltaF/F');
-title(ax,sprintf('RLF (n = %d / %d cells)',rlf.nIncluded,rlf.nTotal));
+
+ttl = sprintf('RLF (n = %d / %d cells',rlf.nIncluded,rlf.nTotal);
+if isfield(rlf,'nAnimalsIncl') && ~isnan(rlf.nAnimalsIncl)
+    if rlf.nAnimalsIncl == 1; word = 'mouse'; else; word = 'mice'; end
+    ttl = sprintf('%s, %d %s',ttl,rlf.nAnimalsIncl,word);
+end
+title(ax,[ttl ')']);
+
+if rlf.nIncluded == 0
+    text(ax,0.5,0.5,sprintf('no cells passed\n>= %d consecutive sig. levels',rlf.nConsec), ...
+        'Units','normalized','HorizontalAlignment','center', ...
+        'VerticalAlignment','middle','Color',[0.6 0.2 0.1]);
+elseif rlf.nIncluded == 1
+    text(ax,0.02,0.98,'n = 1 cell - no SEM','Units','normalized', ...
+        'HorizontalAlignment','left','VerticalAlignment','top', ...
+        'FontSize',8,'Color',[0.6 0.2 0.1]);
+end
+
 set(ax,'XTick',rlf.dBlist);
 box(ax,'off');
 hAx = ax;

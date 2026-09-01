@@ -73,14 +73,29 @@ cellInfo.nSig      = nSig;
 
 RLFincl = RLFall(included,:);
 
+% Mean/SEM go through cohortMeanSEM so the RLF obeys the same small-n contract
+% as every other cohort plot: SEM is NaN (not 0) below 2 included cells, so a
+% single-cell RLF cannot render a zero-width error bar that reads as "no
+% variability". SEMcalc(RLFincl,1) returned zeros in that case.
+ms = cohortMeanSEM(RLFincl);
 out.dBlist    = dBlist;
 out.cellInfo  = cellInfo;
 out.RLFall    = RLFall;
 out.sigAll    = sigAll;
 out.RLFincl   = RLFincl;
-out.meanRLF   = mean(RLFincl,1,'omitnan');
-out.semRLF    = SEMcalc(RLFincl,1);
+out.meanRLF   = ms.mean;
+out.semRLF    = ms.sem;
+out.showBand  = ms.showBand;
 out.nIncluded = sum(included);
 out.nTotal    = nCell;
 out.nConsec   = nConsec;
+
+% animal counts, so plots can state cells AND mice
+if ismember('animal', cellInfo.Properties.VariableNames)
+    out.nAnimals     = numel(unique(string(cellInfo.animal)));
+    out.nAnimalsIncl = numel(unique(string(cellInfo.animal(included))));
+else
+    out.nAnimals     = NaN;
+    out.nAnimalsIncl = NaN;
+end
 end

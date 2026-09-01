@@ -45,7 +45,8 @@ out.n = n;
 out.empty = (n == 0);
 
 if n == 0
-    out.mean = zeros(1,size(M,2));
+    % NaN, not zeros: "no cells contributed" must not plot as a flat zero line
+    out.mean = nan(1,size(M,2));
     out.sem  = nan(1,size(M,2));
     out.nPerFrame = zeros(1,size(M,2));
     out.showBand = false;
