@@ -1,7 +1,7 @@
-function [hAx,hBar,hErr] = plotRLF(rlf,varargin)
-% PLOTRLF  Bar plot of response-level function (mean +/- SEM across cells).
+function [hAx,hLine,hErr] = plotRLF(rlf,varargin)
+% PLOTRLF  Line plot of response-level function (mean +/- SEM across cells).
 %
-%   [hAx,hBar,hErr] = plotRLF(rlf)
+%   [hAx,hLine,hErr] = plotRLF(rlf)
 %   [...] = plotRLF(rlf,'ax',ax,'showCells',true,'color',[0 0 0])
 %
 %   Inputs:
@@ -11,7 +11,13 @@ function [hAx,hBar,hErr] = plotRLF(rlf,varargin)
 %       'ax'        - axes handle. Default: gca.
 %       'showCells' - overlay individual included-cell points at each dB
 %                     as gray dots (no connecting lines). Default false.
-%       'color'     - bar face color. Default [0.4 0.4 0.4].
+%       'color'     - line and marker color. Default [0.4 0.4 0.4].
+%
+%   Outputs:
+%       hAx   - axes handle
+%       hLine - the mean line. An errorbar object when SEM is drawn, since
+%               errorbar renders line, markers and caps as one object.
+%       hErr  - the same errorbar object, or empty when SEM is all NaN.
 %
 %   See also tableRLF, cellRLF.
 
@@ -28,27 +34,34 @@ col       = p.Results.color;
 
 if isempty(ax); ax = gca; end
 
-hBar = bar(ax,rlf.dBlist,rlf.meanRLF,...
-    'FaceColor',col,'EdgeColor','none','BarWidth',0.7);
 hold(ax,'on');
 
-% Error bars only when the SEM is meaningful. tableRLF returns all-NaN semRLF
-% below 2 included cells, so a single-cell RLF draws no bar rather than a
-% zero-width one. Condition is written on semRLF (not the newer showBand
-% field) so RLF structs saved before that field existed still work.
-if any(~isnan(rlf.semRLF))
-    hErr = errorbar(ax,rlf.dBlist,rlf.meanRLF,rlf.semRLF,...
-        'LineStyle','none','Color','k','LineWidth',1.2,'CapSize',8);
-else
-    hErr = gobjects(0);
-end
-
+% Per-cell points first, so the mean line sits on top of them.
 if showCells && ~isempty(rlf.RLFincl)
     [nC,nDB] = size(rlf.RLFincl);
     xJit = repmat(rlf.dBlist,nC,1) + (rand(nC,nDB)-0.5)*2;
     plot(ax,xJit(:),rlf.RLFincl(:),'o',...
         'MarkerSize',4,'MarkerEdgeColor','none',...
-        'MarkerFaceColor',[0.6 0.6 0.6],'HandleVisibility','off');
+        'MarkerFaceColor',[0.7 0.7 0.7],'HandleVisibility','off');
+end
+
+% Mean as a LINE with markers. Error bars only when the SEM is meaningful:
+% tableRLF returns all-NaN semRLF below 2 included cells, so a single-cell RLF
+% draws a bare line rather than zero-height caps. The condition is written on
+% semRLF (not the newer showBand field) so RLF structs saved before that field
+% existed still render.
+if any(~isnan(rlf.semRLF))
+    % errorbar draws the connecting line, the markers and the caps as ONE
+    % object, so hLine and hErr are the same handle in this branch.
+    hLine = errorbar(ax,rlf.dBlist,rlf.meanRLF,rlf.semRLF,'-o',...
+        'Color',col,'MarkerFaceColor',col,'MarkerEdgeColor',col,...
+        'MarkerSize',6,'LineWidth',1.6,'CapSize',6);
+    hErr = hLine;
+else
+    hLine = plot(ax,rlf.dBlist,rlf.meanRLF,'-o',...
+        'Color',col,'MarkerFaceColor',col,'MarkerEdgeColor',col,...
+        'MarkerSize',6,'LineWidth',1.6);
+    hErr = gobjects(0);
 end
 
 xlabel(ax,'dB SPL');

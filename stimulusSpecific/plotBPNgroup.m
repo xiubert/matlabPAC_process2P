@@ -151,7 +151,7 @@ if any(strcmp(plots,'traces'))
     % re-lays out the figure and recomputes 'best' legends, which relocates
     % them across tiles and can collapse them to an unreadable box.
     keep = isgraphics(hLine);
-    if any(keep); legend(ax,hLine(keep),lbl(keep),'Location',legendLoc); end
+    if any(keep); legend(ax,hLine(keep),lbl(keep),'Location',legendLoc,'Box','off'); end
     annotateN(ax,out.Nplot,'location','northeast');
     if all([out.traces.n] == 0)
         text(ax,0.5,0.5,'no cells to plot','Units','normalized', ...

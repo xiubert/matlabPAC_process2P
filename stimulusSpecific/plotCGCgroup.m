@@ -23,6 +23,11 @@ function out = plotCGCgroup(src,varargin)
 %     'traceXlim'   - x-limits (s) for the trace panel. Default [1 5].
 %     'scatterLim'  - axis limits for the low-vs-high scatter. Default [0 1].
 %     'minN'        - minimum cells for the paired test. Default 3.
+%     'showFit'     - draw a linear fit + 95% CI band on the scatter when
+%                     there are enough points. Default true.
+%     'fitMinN'     - minimum cells to attempt the fit. Default 3.
+%     'fitColors'   - 2x3: row 1 fit line, row 2 CI fill. Default black line,
+%                     grey band (regPlot's convention in plotDataTable).
 %     'colors'      - struct from getContrastColors, or nLevels x 3.
 %     'ax'          - struct with fields traces/scatter/bar to plot into.
 %     'legendLocation' - legend placement for the trace panel. Default
@@ -40,10 +45,17 @@ function out = plotCGCgroup(src,varargin)
 %     .valid    nCells x 1: present AND significant in every contrast
 %     .traces   per level: .level .label .t .mean .sem .n .showBand
 %     .stat     cohortStat result for the paired low-vs-high comparison
+%     .fit      linear fit of high vs low peak: .ok .reason .slope .slopeCI
+%               .n .r2 .mdl. The model is fit THROUGH THE ORIGIN
+%               (y ~ x - 1), matching plotDataTable's
+%               regPlot(...,'intercept',false), so the slope is directly the
+%               high/low gain ratio and a CI excluding 1 means the contrasts
+%               differ.
 %     .fig      figure handles created
 %
 %   dBdelta is the dB RANGE of the DRC, so the smaller value is LOW contrast
 %   (e.g. 50-60 dB = 10) and the larger is HIGH contrast (40-70 dB = 30).
+%   The scatter puts LOW on x and HIGH on y, as plotDataTable.m does.
 %
 %   See also loadStimGroup, gatherCellTraces, gatherCellValues, cohortStat,
 %   processCGC, getContrastColors.
@@ -55,6 +67,9 @@ addParameter(p,'sigOnly',true,@islogical);
 addParameter(p,'traceXlim',[1 5],@(x) isnumeric(x)&&numel(x)==2);
 addParameter(p,'scatterLim',[0 1],@(x) isnumeric(x)&&numel(x)==2);
 addParameter(p,'minN',3,@(x) isnumeric(x)&&isscalar(x));
+addParameter(p,'showFit',true,@islogical);
+addParameter(p,'fitMinN',3,@(x) isnumeric(x)&&isscalar(x));
+addParameter(p,'fitColors',[0 0 0; 0.651 0.651 0.651],@(x) isequal(size(x),[2 3]));
 addParameter(p,'colors',[],@(x) isempty(x)||isstruct(x)||isnumeric(x));
 addParameter(p,'ax',struct(),@isstruct);
 addParameter(p,'legendLocation','northeast',@(x) ischar(x)||isstring(x));
@@ -65,6 +80,9 @@ sigOnly    = p.Results.sigOnly;
 traceXlim  = p.Results.traceXlim;
 scatterLim = p.Results.scatterLim;
 minN       = p.Results.minN;
+showFit    = p.Results.showFit;
+fitMinN    = p.Results.fitMinN;
+fitColors  = p.Results.fitColors;
 colors     = p.Results.colors;
 axIn       = p.Results.ax;
 legendLoc  = char(p.Results.legendLocation);
@@ -161,7 +179,7 @@ if any(strcmp(plots,'traces'))
     if ~isempty(traceXlim); xlim(ax,traceXlim); end
     % Explicit location, never 'best' -- see plotBPNgroup for why.
     keep = isgraphics(hLine);
-    if any(keep); legend(ax,hLine(keep),leg(keep),'Location',legendLoc); end
+    if any(keep); legend(ax,hLine(keep),leg(keep),'Location',legendLoc,'Box','off'); end
     annotateN(ax,out.Nplot,'location','southeast', ...
         'extra',ternary(sigOnly,'sig. in every contrast','all cells'));
     if all([out.traces.n] == 0)
@@ -181,15 +199,32 @@ if any(strcmp(plots,'scatter'))
         text(ax,0.5,0.5,sprintf('scatter needs exactly 2 contrasts (found %d)',nL), ...
             'Units','normalized','HorizontalAlignment','center','Color',[0.6 0.2 0.1]);
     else
-        x = pk(out.valid,2);   % high contrast
-        y = pk(out.valid,1);   % low contrast
-        scatter(ax,x,y,45,'filled','MarkerFaceAlpha',0.8); hold(ax,'on');
-        plot(ax,scatterLim,scatterLim,'--k','LineWidth',1);
+        % LOW contrast on x, HIGH on y -- matches
+        % matlabPAC_CGCplot/plotDataTable.m's regPlot(lo,hi,...) call.
+        xLo = pk(out.valid,1);   % low contrast  (smaller dBdelta)
+        yHi = pk(out.valid,2);   % high contrast (larger dBdelta)
+        hold(ax,'on');
+
+        % Fit first so the CI band sits behind the points.
+        out.fit = fitLowHigh(ax,xLo,yHi,scatterLim,fitMinN,fitColors,showFit);
+
+        plot(ax,scatterLim,scatterLim,'--','Color',[0.4 0.4 0.4], ...
+            'LineWidth',1,'HandleVisibility','off');
+        scatter(ax,xLo,yHi,45,'o','MarkerEdgeColor',[0.45 0.45 0.45], ...
+            'MarkerFaceColor','none','LineWidth',1);
+
         xlim(ax,scatterLim); ylim(ax,scatterLim); axis(ax,'square');
-        xlabel(ax,sprintf('%s peak \\DeltaF/F',labels(2)));
-        ylabel(ax,sprintf('%s peak \\DeltaF/F',labels(1)));
-        title(ax,'Peak \DeltaF/F per cell');
-        if isempty(x)
+        % Axis labels carry the contrast colour, as in plotDataTable.
+        xlabel(ax,{char(labels(1)),'peak \DeltaF/F'},'Color',lineCol(1,:));
+        ylabel(ax,{char(labels(2)),'peak \DeltaF/F'},'Color',lineCol(2,:));
+
+        if out.fit.ok
+            title(ax,sprintf('Peak \\DeltaF/F per cell (slope %.2f, CI %.2f-%.2f)', ...
+                out.fit.slope, out.fit.slopeCI(1), out.fit.slopeCI(2)));
+        else
+            title(ax,'Peak \DeltaF/F per cell');
+        end
+        if isempty(xLo)
             text(ax,0.5,0.5,'no cells passed the significance filter', ...
                 'Units','normalized','HorizontalAlignment','center','Color',[0.6 0.2 0.1]);
         end
@@ -200,6 +235,10 @@ end
 
 %% ---- paired bar + guarded statistics ----
 out.stat = struct('ok',false,'reason','not requested','p',NaN);
+if ~isfield(out,'fit')
+    out.fit = struct('ok',false,'reason','scatter not requested', ...
+        'slope',NaN,'slopeCI',[NaN NaN],'n',0,'r2',NaN);
+end
 if any(strcmp(plots,'bar'))
     ax = getAx(axIn,'bar');
     if isempty(ax)
@@ -309,4 +348,37 @@ end
 
 function v = ternary(c,a,b)
 if c; v = a; else; v = b; end
+end
+
+function fit = fitLowHigh(ax,x,y,lims,minN,col,doDraw)
+% Linear fit of high-contrast peak on low-contrast peak, THROUGH THE ORIGIN,
+% with a 95% CI band -- the model plotDataTable.m fits via
+% regPlot(lo,hi,'intercept',false). With no intercept the slope IS the
+% high/low gain ratio, so a CI excluding 1 means the two contrasts differ.
+fit = struct('ok',false,'reason','','slope',NaN,'slopeCI',[NaN NaN], ...
+    'n',0,'r2',NaN,'mdl',[]);
+keep = ~isnan(x) & ~isnan(y);
+x = x(keep); y = y(keep);
+fit.n = numel(x);
+if ~doDraw
+    fit.reason = 'showFit is false'; return
+end
+if fit.n < minN
+    fit.reason = sprintf('n = %d, below fitMinN = %d', fit.n, minN); return
+end
+try
+    mdl = fitlm(table(x,y),'y ~ x - 1');
+catch ME
+    fit.reason = sprintf('fitlm failed: %s', ME.message); return
+end
+xf = linspace(min(lims),max(lims),200)';
+[yf,ci] = predict(mdl,xf);
+fill(ax,[xf;flipud(xf)],[ci(:,1);flipud(ci(:,2))],col(2,:), ...
+    'LineStyle','none','FaceAlpha',0.4,'HandleVisibility','off');
+plot(ax,xf,yf,'-','Color',col(1,:),'LineWidth',1.5,'HandleVisibility','off');
+fit.ok = true;
+fit.slope   = mdl.Coefficients.Estimate(1);
+fit.slopeCI = mdl.coefCI;
+fit.r2      = mdl.Rsquared.Ordinary;
+fit.mdl     = mdl;
 end
