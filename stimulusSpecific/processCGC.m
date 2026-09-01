@@ -1,8 +1,16 @@
 % PROCESSCGC  CGC / pure-tone-in-contrast (contrast gain control) analysis.
 %
-%   Loads <animal>_anmlROI_CGCstimTable.mat, computes dF/F referenced to the
-%   DRC baseline and then to the pre-pure-tone (PT) baseline, detects peak PT
-%   responses + significance, and plots per-ROI and population summaries.
+%   Loads <animal>_anmlROI_CGCstimTable_raw.mat (written by stimParam2ROI),
+%   computes dF/F referenced to the DRC baseline and then to the pre-pure-tone
+%   (PT) baseline, detects peak PT responses + significance, plots per-ROI and
+%   population summaries, and writes the processed bundle to
+%   <animal>_anmlROI_CGCstimTable.mat.
+%
+%   TWO-STAGE CONVENTION (matches BPN): the _raw input is never modified, so
+%   re-running this script is safe and repeatable, and an animal that has not
+%   been processed has no processed file for aggregateStimGroup to pick up
+%   silently. A pre-split animal with only the un-suffixed file is still
+%   handled: it is re-processed with its derived columns stripped first.
 %
 %   METHOD (matches matlabPAC_CGCplot/plotDataTable.m and the manuscript):
 %     dFF_DRC          = (F - F0_DRC)/F0_DRC, F0_DRC = mean F over [-1.2 0] s (pre DRC onset).
@@ -15,11 +23,10 @@
 %   trials. pkFcalc is fed dFF_PT_avg.
 %
 %   SCOPE: this script processes and plots ONE animal. Its population panels
-%   are per-animal QC. For cohort work across animals, aggregate with
-%   aggregateStimGroup and plot with plotCGCgroup -- do NOT run these cells
-%   against a multi-animal group table. The population cells here assume one
-%   animal's uniform trace lengths and crash on a group where no cell is
-%   significant in both contrasts (splitapply on an empty selection).
+%   are delegated to plotCGCgroup, so the single-animal and cohort cases run
+%   the same code. For cohort work across animals, aggregate with
+%   aggregateStimGroup and call plotCGCgroup on the group file rather than
+%   running this script.
 %
 %   See also plotCGCgroup, aggregateStimGroup, dFoFcalc, pkFcalc,
 %   getContrastColors, fillSEMplot
@@ -39,19 +46,55 @@ ROIperFig       = 9;     % ROI subplots per figure (3x3)
 colors          = getContrastColors();  % contrast color scheme (lohiPre/lohiTracePre)
 avgTraceXlim    = [1 5]; % x-limits (s) for population average-trace plot
 pkScatterLim    = [0 1]; % axis limits for low-vs-high peak dF/F scatter
-jitterAmount    = 0.08;  % horizontal jitter for bar-graph scatter overlay
 popTraceSigOnly = true;  % population avg trace: true = significant cells only,
                          % false = all cells. Scatter/bar/t-test always use
                          % significant-in-both-contrasts cells.
 
 %% ---- LOAD DATA ----
+% Two-stage convention (matches BPN): stimParam2ROI writes
+% <animal>_anmlROI_CGCstimTable_raw.mat; this script reads it and writes the
+% processed bundle to <animal>_anmlROI_CGCstimTable.mat. Re-running never
+% mutates its own input.
 if ~exist('dataPath','var')
     dataPath = uigetdir('','Select the animal data folder');
     if isequal(dataPath,0)
         error('processCGC:noDataPath','No data folder selected.');
     end
+end
+if ~exist('animal','var') || isempty(animal)
     animal = regexp(dataPath,'[A-Z]{2}\d{4}','match','once');
-    load(fullfile(dataPath,[animal '_anmlROI_CGCstimTable.mat']))
+end
+
+rawFile  = fullfile(dataPath,[animal '_anmlROI_CGCstimTable_raw.mat']);
+procFile = fullfile(dataPath,[animal '_anmlROI_CGCstimTable.mat']);
+
+if isfile(rawFile)
+    load(rawFile)
+elseif isfile(procFile)
+    % Legacy layout: before the split, stimParam2ROI wrote the un-suffixed
+    % file and processCGC -append'ed into it, so the only file present holds
+    % raw AND derived columns. Re-process from it, but strip the derived
+    % columns first -- otherwise stale or foreign ones survive into the fresh
+    % run, which is how Groups C/D ended up carrying both dFF_PT_avg and a
+    % dFF_PT_preDRCf0 written by a different script version.
+    warning('processCGC:legacyLayout',...
+        ['%s not found; falling back to %s (pre-split layout). Derived '...
+         'columns are stripped and recomputed. Re-run stimParam2ROI to '...
+         'create the _raw artifact.'],...
+        [animal '_anmlROI_CGCstimTable_raw.mat'],...
+        [animal '_anmlROI_CGCstimTable.mat']);
+    load(procFile)
+    stale = intersect(stimGroupSpec('CGC').derivedVars, ...
+        anmlROIbyStim.Properties.VariableNames);
+    if ~isempty(stale)
+        fprintf('  stripping stale derived column(s): %s\n', strjoin(stale,', '));
+        anmlROIbyStim = removevars(anmlROIbyStim, stale);
+    end
+else
+    error('processCGC:noInput',...
+        'Neither %s nor %s found in %s. Run stimParam2ROI first.',...
+        [animal '_anmlROI_CGCstimTable_raw.mat'],...
+        [animal '_anmlROI_CGCstimTable.mat'], dataPath);
 end
 
 %% Setup
@@ -260,132 +303,32 @@ end
 valid = all(sigByROI,2);
 
 %% Save output
-save(fullfile(dataPath,[animal '_anmlROI_CGCstimTable.mat']),"anmlROIbyStim",'-append');
+% Full write of the processed bundle (NOT -append). The _raw input is never
+% touched, so re-running this script is safe and repeatable. stimTable and
+% tifStimParamTable are carried through because downstream code reads them
+% from this file; with -append they were only present by inheritance from
+% whatever the file already contained.
+save(procFile,'anmlROIbyStim','stimTable','tifStimParamTable','dataPath','-v7.3');
 
-%% Plot avg of all ROIs
-% Restrict to cells with significant responses in both contrasts when popTraceSigOnly is true, so this
-% population trace uses the same cell set as the scatter/bar below; otherwise
-% average across all ROIs.
-if popTraceSigOnly
-    Tpop = anmlROIbyStim(ismember(anmlROIbyStim.roiID,roiList(valid)),:);
-else
-    Tpop = anmlROIbyStim;
-end
+%% Population summaries (traces, low-vs-high scatter, paired bar)
+% Delegated to plotCGCgroup so the single-animal case and the group case run
+% the SAME code. The previous inline versions crashed whenever no cell was
+% significant in both contrasts -- splitapply on an empty selection errors
+% with "Group numbers must be a vector of positive integers" -- which is not
+% a multi-animal-only problem: TO0006 alone has 0 of 24 such cells, so
+% processCGC could not run to completion on that animal at all.
+%
+% plotCGCgroup renders a labelled empty panel instead, and its paired test
+% refuses with a reason rather than emitting p = NaN.
+%
+% For cohort work across animals, aggregate with aggregateStimGroup and call
+% plotCGCgroup on the group file directly rather than running this script.
+popOut = plotCGCgroup(anmlROIbyStim, ...
+    'sigOnly',    popTraceSigOnly, ...
+    'traceXlim',  avgTraceXlim, ...
+    'scatterLim', pkScatterLim, ...
+    'verbose',    true);
 
-% per-cell PT response (dFF_PT_avg) -> mean +/- between-cell SEM per
-% contrast. Same manuscript quantity that the peak/scatter/bar below quantify.
-% group each cell's avg trace by contrast -> [nCells x nFrames] per contrast,
-% then mean and between-cell SEM ACROSS CELLS. Dimension 1 is explicit so a
-% single-cell group is averaged across cells, not collapsed across time.
-groups = findgroups(Tpop.dBdelta);   % ascending dBdelta -> group r == dBdeltaList(r)
-dFF_PT_mean = splitapply(@(x) {nanmean(vertcat(x{:}),1)},Tpop.dFF_PT_avg,groups);
-dFF_PT_sem  = splitapply(@(x) {SEMcalc(vertcat(x{:}),1)},Tpop.dFF_PT_avg,groups);
-
-figure;
-hold on
-for r=1:ndBdelta
-    x=anmlROIbyStim(1,:).t_dFF_DRC{1,1};
-    y=dFF_PT_mean{r,1};
-    yerr=dFF_PT_sem{r,1};
-    fillSEMplot(x,y,yerr,colors.lohiPre(r,:),colors.lohiTracePre(r,:));
-end
-
-
-xlabel('time/s')
-ylabel('dF/F')
-xline(PTonsetSec,'--','pure tone')
-xlim(avgTraceXlim)
-hold off;
-title('Average across cell');
-legend('Low contrast', 'High contrast')
-
-%% Low vs High per ROI
-% pkByROI / valid computed above (Per-ROI peak + significance section).
-% valid = significant-in-both-contrasts cells.
-x = pkByROI(valid,2);   % high contrast (dBdeltaList(2))
-y = pkByROI(valid,1);   % low contrast  (dBdeltaList(1))
-roiList_pos = roiList(valid);
-
-% make scatter
-figure;
-scatter(x,y,45,'filled','MarkerFaceAlpha',0.8);
-hold on;
-% identity line
-lims = pkScatterLim;
-plot(lims, lims, '--k', 'LineWidth', 1);
-hold off;
-
-xlabel('High contrast');
-ylabel('Low contrast');
-title('peak dF/F per roi');
-% grid on;
-axis equal;
-xlim(lims); ylim(lims);
-
-%% Bar graph of peak dF/F per contrast, with scatter overlay
-group=cell(ndBdelta,1);
-pkResp_means=NaN(ndBdelta,1);
-pkResp_sems=NaN(ndBdelta,1);
-
-for k = 1:ndBdelta
-    % pkByROI and valid share roiList order (see Per-ROI peak + significance)
-    vals = pkByROI(valid,k);
-    group{k}=vals;
-    pkResp_means(k) = mean(vals,'omitnan');
-    % SEM over the valid (filtered) cells only; SEMcalc divides by the count
-    % of non-NaN entries, not total nCell, so it is not understated.
-    pkResp_sems(k)= SEMcalc(vals);
-end
-
-% Create bar plot and error bars (SEM)
-figure;
-b = bar(1:ndBdelta, pkResp_means,'FaceColor','flat');
-hold on;
-errorbar(1:ndBdelta, pkResp_means, pkResp_sems, 'k.', 'LineWidth',1);
-
-% Overlay individual points with jitter
-rng(0); % for reproducible jitter
-for k = 1:ndBdelta
-    b.CData(k,:)=colors.lohiPre(k,:);
-    vals = group{k};
-    x = (k) + (rand(size(vals)) - 0.5) * 2 * jitterAmount;
-    % Plot points
-    scatter(x, vals, 20, 'k', 'filled', 'MarkerFaceAlpha', 0.6);
-end
-
-% Formatting
-
-xticklabels({'Low contrast','High contrast'});             % works for numeric/categorical/string
-ylabel('peak dF/F');
-% title('pkPT by dBdelta (individual points and group mean)');
-box on;
-
-if ndBdelta == 2
-    [h,p,ci,stats] = ttest(group{1}, group{2});
-    means=[pkResp_means(1),pkResp_means(2)];
-    sems=[pkResp_sems(1),pkResp_sems(2)];
-    % Add significance star or text
-    yMax = max([means + sems]) ;
-    yStar = yMax + 0.5*range([means sems]) ;  % vertical position for star/line
-    % Draw bar connecting line
-    plot([1 2], [yStar yStar], '-k', 'LineWidth',1);
-    % Draw short ticks
-    plot([1 1], [yStar-0.1*range([means sems]) yStar], '-k', 'LineWidth',1);
-    plot([2 2], [yStar-0.1*range([means sems]) yStar], '-k', 'LineWidth',1);
-
-    if p < 0.001
-        sigtxt = '***';
-    elseif p < 0.01
-        sigtxt = '**';
-    elseif p < 0.05
-        sigtxt = '*';
-    else
-        sigtxt = sprintf('p=%.3g', p);
-    end
-    text(1.5, yStar + 0.03*range([means sems]), sigtxt, 'HorizontalAlignment','center', 'FontSize',14);
-end
-
-hold off;
 
 %% ========================== APPENDIX ==========================
 % Optional QC plots, not part of the standard analysis. Opt-in via toggle so

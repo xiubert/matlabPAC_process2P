@@ -47,12 +47,17 @@ function [pulseLegend2P,stimGroupIDX,outputTables] = stimParam2ROI(dataPath)
 %   Side-effect .mat files written (only for groups with >1 tif):
 %     <animal>_pulseLegend2P.mat
 %     <animal>_stimGroupIDX.mat
-%     <animal>_anmlROI_CGCstimTable.mat      (PTinContrast)
-%     <animal>_anmlROI_BPNstimTable_raw.mat  (BPN; _raw marks the
-%       pre-processBPN2P state. processBPN2P loads this, computes dFF
-%       and peak responses, then writes the processed bundle to
-%       <animal>_anmlROI_BPNstimTable.mat. Keeping the two artifacts
-%       distinct avoids re-run mutation of the raw table.)
+%     <animal>_anmlROI_CGCstimTable_raw.mat  (PTinContrast; see _raw note below)
+%     <animal>_anmlROI_BPNstimTable_raw.mat  (BPN; see _raw note below)
+%
+%   _raw two-stage convention (BPN and CGC): stimParam2ROI writes the _raw
+%   table; the matching process* script (processBPN2P / processCGC) loads it,
+%   computes dF/F and peak responses, and writes the processed bundle to the
+%   same name WITHOUT the _raw suffix. Keeping the two artifacts distinct
+%   means re-running a process* script never mutates its own input, and an
+%   animal that has not been processed yet has no processed file to aggregate
+%   silently. Downstream consumers (aggregateStimGroup, the group plotters)
+%   read the processed file.
 %     <animal>_anmlROI_SpontstimTable.mat    (spont)
 %     <animal>_anmlROI_dContrastTable.mat    (contrastChange)
 %
@@ -148,7 +153,7 @@ if sum(stimGroupIDX.ptStimIDX.tifFileList)>1
     outputTables{end+1} = 'stimTable';
     outputTables{end+1} = stimTable;
     
-    save(fullfile(dataPath,[animal '_anmlROI_CGCstimTable.mat']),...
+    save(fullfile(dataPath,[animal '_anmlROI_CGCstimTable_raw.mat']),...
         'anmlROIbyStim','stimTable','tifStimParamTable',...
         'dataPath','-v7.3')
 end
