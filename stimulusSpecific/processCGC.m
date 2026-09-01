@@ -14,7 +14,15 @@
 %   CELL-AVERAGE response (dFF_PT_avg = mean over reps), not individual
 %   trials. pkFcalc is fed dFF_PT_avg.
 %
-%   See also dFoFcalc, pkFcalc, getContrastColors, fillSEMplot
+%   SCOPE: this script processes and plots ONE animal. Its population panels
+%   are per-animal QC. For cohort work across animals, aggregate with
+%   aggregateStimGroup and plot with plotCGCgroup -- do NOT run these cells
+%   against a multi-animal group table. The population cells here assume one
+%   animal's uniform trace lengths and crash on a group where no cell is
+%   significant in both contrasts (splitapply on an empty selection).
+%
+%   See also plotCGCgroup, aggregateStimGroup, dFoFcalc, pkFcalc,
+%   getContrastColors, fillSEMplot
 
 %% ---- PARAMETERS ----
 % dF/F baseline windows (seconds, re trial start after trigDelay correction)
