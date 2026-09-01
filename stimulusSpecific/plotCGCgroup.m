@@ -25,6 +25,9 @@ function out = plotCGCgroup(src,varargin)
 %     'minN'        - minimum cells for the paired test. Default 3.
 %     'colors'      - struct from getContrastColors, or nLevels x 3.
 %     'ax'          - struct with fields traces/scatter/bar to plot into.
+%     'legendLocation' - legend placement for the trace panel. Default
+%                     'northeast'. Never 'best' -- exportgraphics recomputes
+%                     those and relocates them across tiles.
 %     'verbose'     - print a summary. Default true.
 %
 %   Output (struct):
@@ -54,6 +57,7 @@ addParameter(p,'scatterLim',[0 1],@(x) isnumeric(x)&&numel(x)==2);
 addParameter(p,'minN',3,@(x) isnumeric(x)&&isscalar(x));
 addParameter(p,'colors',[],@(x) isempty(x)||isstruct(x)||isnumeric(x));
 addParameter(p,'ax',struct(),@isstruct);
+addParameter(p,'legendLocation','northeast',@(x) ischar(x)||isstring(x));
 addParameter(p,'verbose',true,@islogical);
 parse(p,src,varargin{:});
 plots      = lower(cellstr(p.Results.plots));
@@ -63,6 +67,7 @@ scatterLim = p.Results.scatterLim;
 minN       = p.Results.minN;
 colors     = p.Results.colors;
 axIn       = p.Results.ax;
+legendLoc  = char(p.Results.legendLocation);
 verbose    = p.Results.verbose;
 
 spec = stimGroupSpec('CGC');
@@ -154,9 +159,10 @@ if any(strcmp(plots,'traces'))
     xlabel(ax,'time (s)'); ylabel(ax,'\DeltaF/F');
     title(ax,'Population \DeltaF/F re contrast');
     if ~isempty(traceXlim); xlim(ax,traceXlim); end
+    % Explicit location, never 'best' -- see plotBPNgroup for why.
     keep = isgraphics(hLine);
-    if any(keep); legend(ax,hLine(keep),leg(keep),'Location','best'); end
-    annotateN(ax,out.Nplot,'location','northeast', ...
+    if any(keep); legend(ax,hLine(keep),leg(keep),'Location',legendLoc); end
+    annotateN(ax,out.Nplot,'location','southeast', ...
         'extra',ternary(sigOnly,'sig. in every contrast','all cells'));
     if all([out.traces.n] == 0)
         text(ax,0.5,0.5,'no cells passed the significance filter', ...

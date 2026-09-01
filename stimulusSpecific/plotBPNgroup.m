@@ -24,6 +24,10 @@ function out = plotBPNgroup(src,varargin)
 %     'colors'     - nLevels x 3 colormap. Default jet(nLevels).
 %     'ax'         - struct with fields rlf/traces/peak to plot into existing
 %                    axes instead of creating figures.
+%     'legendLocation' - legend placement for the trace panel. Default
+%                    'northwest'. Never use 'best': exportgraphics recomputes
+%                    'best' legends and, inside a tiledlayout, relocates them
+%                    across tiles.
 %     'verbose'    - print the per-panel summary. Default true.
 %
 %   Output (struct) - the numbers behind every panel, so the figures can be
@@ -51,6 +55,7 @@ addParameter(p,'levels',[],@(x) isempty(x)||isnumeric(x));
 addParameter(p,'traceCells','all',@(x) any(strcmpi(x,{'all','included'})));
 addParameter(p,'colors',[],@(x) isempty(x)||isnumeric(x));
 addParameter(p,'ax',struct(),@isstruct);
+addParameter(p,'legendLocation','northwest',@(x) ischar(x)||isstring(x));
 addParameter(p,'verbose',true,@islogical);
 parse(p,src,varargin{:});
 plots      = lower(cellstr(p.Results.plots));
@@ -59,6 +64,7 @@ levels     = p.Results.levels;
 traceCells = lower(p.Results.traceCells);
 colors     = p.Results.colors;
 axIn       = p.Results.ax;
+legendLoc  = char(p.Results.legendLocation);
 verbose    = p.Results.verbose;
 
 spec = stimGroupSpec('BPN');
@@ -141,8 +147,11 @@ if any(strcmp(plots,'traces'))
     drawStimMarkers(ax,T);
     xlabel(ax,'time (s)'); ylabel(ax,'\DeltaF/F');
     title(ax,'Population \DeltaF/F re sound level');
+    % Explicit location, never 'best': in a tiledlayout, exportgraphics
+    % re-lays out the figure and recomputes 'best' legends, which relocates
+    % them across tiles and can collapse them to an unreadable box.
     keep = isgraphics(hLine);
-    if any(keep); legend(ax,hLine(keep),lbl(keep),'Location','best'); end
+    if any(keep); legend(ax,hLine(keep),lbl(keep),'Location',legendLoc); end
     annotateN(ax,out.Nplot,'location','northeast');
     if all([out.traces.n] == 0)
         text(ax,0.5,0.5,'no cells to plot','Units','normalized', ...
