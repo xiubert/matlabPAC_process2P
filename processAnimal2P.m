@@ -19,19 +19,18 @@
 %   8. FISSA parsing     - load FISSA output, separate map vs. stim trials,
 %                          apply neuropil scaling, save tifFileList
 %   9. Stim alignment    - attach stimulus parameters to corrected traces
-%                          via stimParam2ROI
+%                          via stimParam2ROI  -> one _raw table per family
+%  10. Per-stim analysis - dF/F and peak responses per stimulus family via
+%                          processAnimalStimFamilies (runs processBPN2P /
+%                          processCGC for whichever families this animal has)
 %
 % OUTPUT: tifFileList struct with motion- and neuropil-corrected fluorescence
-%         traces (SCALEDfissaFroi, shape: ROI x frames) for each tif, plus one
-%         <animal>_anmlROI_<Family>stimTable_RAW.mat per stimulus family.
+%         traces (SCALEDfissaFroi, shape: ROI x frames) for each tif, plus a
+%         processed <animal>_anmlROI_<Family>stimTable.mat per stimulus family.
 %
-% NEXT (this script is not the end of the per-animal path): the _raw tables
-% hold traces aligned to stimuli but NO dF/F and no peak responses. Run the
-% per-stimulus script for each family this animal has --
-%   processBPN2P   ->  <animal>_anmlROI_BPNstimTable.mat
-%   processCGC     ->  <animal>_anmlROI_CGCstimTable.mat
-% -- and only then aggregate across animals with aggregateStimGroup and plot
-% with plotBPNgroup / plotCGCgroup. See README section 2.
+% This completes the PER-ANIMAL path. To compare condition groups, run
+% aggregateStimGroup with a manifest once per group and plot with
+% plotBPNgroup / plotCGCgroup. See README section 3.
 %
 
 clearvars;close all;clc;
@@ -521,18 +520,28 @@ save(fullfile(dataPath,[animal '_tifFileList.mat']),...
 % Writes one _raw table per stimulus family present.
 [pulseLegend2P,stimGroupIDX,ROIoutputTables] = stimParam2ROI(dataPath);
 
-%% 11. NEXT STEP - per-animal dF/F and peak responses  [RUN SEPARATELY]
-% The _raw tables above carry stimulus-aligned traces but no dF/F and no peak
-% responses. Those are per-animal quantities (baselines and significance are
-% computed within an animal), so they must be computed before any grouping.
+%% 11. Per-animal dF/F and peak responses, per stimulus family
+% The _raw tables written above carry stimulus-aligned traces but no dF/F and
+% no peak responses. Those are per-animal quantities -- baselines and
+% significance are computed within an animal -- so they must be computed
+% before any grouping. This runs processBPN2P / processCGC for whichever
+% families this animal actually has, and writes the processed
+% <animal>_anmlROI_<Family>stimTable.mat that aggregateStimGroup reads.
 %
-%   processBPN2P     % if this animal has BPN tifs
-%   processCGC       % if this animal has PT-in-contrast tifs
-%
-% Each reads its _raw table and writes the processed
-% <animal>_anmlROI_<Family>stimTable.mat, which is what aggregateStimGroup
-% reads. Aggregating before this step raises aggregateStimGroup:notProcessed.
-%
-% Then, once per condition group:
-%   aggregateStimGroup(manifest)          % -> <Family>_Group<g>.mat
-%   plotBPNgroup / plotCGCgroup           % group figures
+% Set showPerStimPlots = true to keep each family's QC figures open. To use
+% non-default analysis parameters for an animal, set runPerStimProcessing =
+% false and run processBPN2P / processCGC by hand with the parameter block
+% edited.
+runPerStimProcessing = true;
+showPerStimPlots     = false;
+
+if runPerStimProcessing
+    stimProc = processAnimalStimFamilies(dataPath,'showPlots',showPerStimPlots);
+end
+
+%% COMPLETE (per animal). To compare condition groups:
+%   manifest = struct('group','D','family','BPN','animals',["TO0006","TO0007"], ...
+%                     'cohortRoot',<parent of the animal folders>, ...
+%                     'outDir',<where group files should live>);
+%   aggregateStimGroup(manifest);      % -> <Family>_Group<g>.mat
+%   plotBPNgroup('BPN_GroupD.mat');    % or plotCGCgroup('CGC_GroupD.mat')
