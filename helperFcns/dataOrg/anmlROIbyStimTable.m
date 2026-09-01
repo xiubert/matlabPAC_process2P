@@ -212,14 +212,36 @@ end
 for i = 1:length(tifFileListStim)
     if ismember('totalPulses', tifStimParamTable.Properties.VariableNames) && tifStimParamTable.totalPulses(i) > 1
         % multiple pulses for each tif
-        framesPreTrig = tifFileListStim(i).frameRate*tifStimParamTable{i,'trigDelay'};
-        framesPerPulse = tifFileListStim(i).frameRate*tifStimParamTable{i,'ISI'};
+        frameRate = tifFileListStim(i).frameRate;
+        framesPreTrig = frameRate*tifStimParamTable{i,'trigDelay'};
+        framesPerPulse = frameRate*tifStimParamTable{i,'ISI'};
         totalPulse = tifStimParamTable.totalPulses(i);
         tifRawF = [tifRawF;mat2cell(tifFileListStim(i).rawFroi(:,framesPreTrig+1:framesPreTrig+framesPerPulse*totalPulse),length(moCorROI),repmat(framesPerPulse,1,totalPulse))'];
         tifMoCorRawF = [tifMoCorRawF;mat2cell(tifFileListStim(i).moCorRawFroi(:,framesPreTrig+1:framesPreTrig+framesPerPulse*totalPulse),length(moCorROI),repmat(framesPerPulse,1,totalPulse))'];
         if FISSA
             tifFissaFroi = [tifFissaFroi,mat2cell(tifFileListStim(i).fissaFroi(:,framesPreTrig+1:framesPreTrig+framesPerPulse*totalPulse),length(moCorROI),repmat(framesPerPulse,1,totalPulse))'];
-            tifSCALEDfissaFroi = [tifSCALEDfissaFroi,mat2cell(tifFileListStim(i).SCALEDfissaFroi(:,framesPreTrig+1:framesPreTrig+framesPerPulse*totalPulse),length(moCorROI),repmat(framesPerPulse,1,totalPulse))'];
+            tmptifSCALEDfissaFroi = mat2cell(tifFileListStim(i).SCALEDfissaFroi(:,framesPreTrig+1:framesPreTrig+framesPerPulse*totalPulse),length(moCorROI),repmat(framesPerPulse,1,totalPulse))';
+            if excludeNeg
+                tmpavgtifSCALEDfissaFroi=cellfun(@(x) mean(x,1), tmptifSCALEDfissaFroi, 'UniformOutput', false);
+                for j=1:size(tifSCALEDfissaFroi,1)-1
+                    onset=tifStimParamTable.BPNsOnset{1,1}{j,1}; %TODO: BPN -> agnostic to stim type for other traces w/ multiple stim epochs eg. regex for sOnset
+                    tmpbase=tmpavgtifSCALEDfissaFroi{j,1}((onset-1)*frameRate+1:onset*frameRate);
+                    tmpmeanbase=mean(tmpbase,2);
+                    tmpsdbase=std(tmpbase,0,2);
+                    tmpresp=tmpavgtifSCALEDfissaFroi{j,1}((onset+0.2)*frameRate+1:framesPerPulse); %(onset+3.8)*frameRate);
+                    tmpmaxresp=max(tmpresp);
+                    consecutiveavg=(tmpresp(1:end-2) + tmpresp(2:end-1) + tmpresp(3:end)) / 3;
+                    if any(consecutiveavg<tmpmeanbase-3*tmpsdbase)|| (tmpmaxresp<tmpmeanbase)
+                        tmptifSCALEDfissaFroi{j,1}(:)=NaN;
+                    end
+                    tmpnextbase=tmpavgtifSCALEDfissaFroi{j+1,1}((onset-1)*frameRate+1:onset*frameRate);
+                    consecutiveavgnextbase=(tmpnextbase(1:end-2) + tmpnextbase(2:end-1) + tmpnextbase(3:end)) / 3;
+                    if any(consecutiveavgnextbase<tmpmeanbase-3*tmpsdbase)
+                        tmptifSCALEDfissaFroi{j+1,1}(:)=NaN;
+                    end
+                end
+            end
+            tifSCALEDfissaFroi = [tifSCALEDfissaFroi,tmptifSCALEDfissaFroi];
         end
     else% one pulse for each tif
         tifRawF = [tifRawF; {tifFileListStim(i).rawFroi}'];
