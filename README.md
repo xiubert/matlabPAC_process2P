@@ -102,6 +102,7 @@ Two-stage: reads `<animal>_anmlROI_CGCstimTable_raw.mat`, writes `<animal>_anmlR
 #### `processFRA.m` — frequency response area mapping
 
 Operates on `tifFileList` directly (not via a per-stim table); computes per-cell FRA maps and best-frequency estimates.
+
 ---
 
 ### 3. Condition groups — `aggregateStimGroup` + the group plotters
