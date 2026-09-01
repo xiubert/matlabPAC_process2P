@@ -42,9 +42,14 @@ function mergedTable = combineDiffOnset(anmlROIbyStim, baselineSec)
 %     with lowercase 'sonset' should be migrated via
 %     migrateBPNStimTableFields first.
 
-arguments
-    anmlROIbyStim table
-    baselineSec   (1,1) double {mustBePositive} = 1
+if nargin < 1 || ~isa(anmlROIbyStim, 'table')
+    error('combineDiffOnset:InvalidInput', 'The first argument must be a table.');
+end
+if nargin < 2
+    baselineSec = 1; % Default value
+else
+    validateattributes(baselineSec, {'double'}, {'scalar', 'positive'}, ...
+        'combineDiffOnset', 'baselineSec');
 end
 
 allVars = anmlROIbyStim.Properties.VariableNames;
