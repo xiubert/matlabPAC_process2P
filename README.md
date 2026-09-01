@@ -322,9 +322,11 @@ one analysis convention and carries a provenance stamp.
 
 ### Caveats before using it
 
-- **`plotCohortData.m` will not run as-is**: lines 6–7 load hardcoded Windows
-  paths (`C:\Users\JIC402\OneDrive - University of Pittsburgh\...`).
-  `compileCohortData.m` was given `uigetdir` prompts; `plotCohortData.m` was not.
+- Both scripts now **prompt** rather than carrying hardcoded paths.
+  `plotCohortData.m` asks for the `*_dataTable.mat` and derives the matching
+  `*_params.mat` from the same prefix; preset `cohortDataFile` in the workspace
+  to skip the dialog. Missing parameters are filled with defaults per field, so
+  a params file saved by an older revision still works.
 - **dF/F is recomputed at plot time** from the canonical `F` column, using
   parameters set in the plotting script — not the values the `process*` scripts
   computed per animal. The two paths can therefore disagree unless the

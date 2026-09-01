@@ -1,10 +1,65 @@
 %plotCohortData
 
 %% LOAD DATA
-clearvars;close all;clc;
+% -except cohortDataFile so a caller can preset it and skip the prompt; a bare
+% clearvars would wipe it before the check below ever sees it.
+clearvars -except cohortDataFile;close all;clc;
 
-load('C:\Users\JIC402\OneDrive - University of Pittsburgh\Data\CaMKII_combined\CaMKII_dataTable.mat')
-load('C:\Users\JIC402\OneDrive - University of Pittsburgh\Data\CaMKII_combined\CaMKII_params.mat')
+% Inputs are compileCohortData's outputs: <cohortName>_dataTable.mat (holding
+% Tinput) and a matching <cohortName>_params.mat. Select the data table; the
+% params file is derived from the same prefix, so the two cannot be mismatched.
+% Set cohortDataFile in the workspace beforehand to skip the prompt.
+if ~exist('cohortDataFile','var') || isempty(cohortDataFile)
+    [f,pth] = uigetfile({'*_dataTable.mat','Cohort data table (*_dataTable.mat)'}, ...
+        'Select the cohort data table (output of compileCohortData)');
+    if isequal(f,0)
+        error('plotCohortData:noFile','No cohort data table selected.');
+    end
+    cohortDataFile = fullfile(pth,f);
+end
+if ~isfile(cohortDataFile)
+    error('plotCohortData:fileNotFound','Cohort data table not found: %s', cohortDataFile);
+end
+load(cohortDataFile,'Tinput')
+
+paramsFile = strrep(cohortDataFile,'_dataTable.mat','_params.mat');
+if isfile(paramsFile)
+    load(paramsFile,'params')
+else
+    warning('plotCohortData:noParams', ...
+        '%s not found; using defaults for every parameter.', paramsFile);
+    params = struct();
+end
+
+% Fill any field the sections below need but the params file does not carry.
+% Done per-field rather than all-or-nothing because params files saved by older
+% revisions of compileCohortData are missing fields added since -- the sample
+% CaMKII_params.mat has no nFramesPostPulse, which the dFF section needs.
+[~,nm] = fileparts(cohortDataFile);
+defs = struct( ...
+    'cohort',           erase(nm,'_dataTable'), ...
+    'colors',           getContrastColors(), ...
+    'pkPTframeBin',     4, ...
+    'pkPTsigSD',        2, ...
+    'nFramesPostPulse', 2, ...
+    'permIters',        100000);
+df = fieldnames(defs);
+missing = df(~isfield(params,df));
+for k = 1:numel(missing)
+    params.(missing{k}) = defs.(missing{k});
+end
+if ~isempty(missing)
+    fprintf('plotCohortData: filled default param(s): %s\n', strjoin(missing',', '));
+end
+
+% Where figSaveAsFigEpsPng writes when a section has figSave = true. Defaults
+% to the folder the data table came from.
+if ~isfield(params,'figSaveDir') || isempty(params.figSaveDir)
+    params.figSaveDir = fileparts(cohortDataFile);
+end
+
+fprintf('plotCohortData: %s | %d rows | figures -> %s\n', ...
+    params.cohort, height(Tinput), params.figSaveDir);
 
 %% dFF
 % %{
@@ -108,7 +163,7 @@ ylabelLowHighPkRespRatio(params.colors);
 xticklabels(string(unique(Tplot.PTsOnset)))
 xlabel('DRC duration preceding pure tone (s)')
 if figSave
-    figSaveAsFigEpsPng(gcf);
+    figSaveAsFigEpsPng(gcf,params.figSaveDir);
 end
 
 %}
@@ -208,7 +263,7 @@ if plotBoxplot==0
     ax = gca;
     ax.YAxis.TickLength = [0 0];
     if figSave
-        figSaveAsFigEpsPng(gcf);
+        figSaveAsFigEpsPng(gcf,params.figSaveDir);
     end
     
 end
@@ -342,7 +397,7 @@ ylabel({'high contrast','peak % \DeltaF/F'},...
     'Color',params.colors.lohiPre(2,:),'interpreter', 'tex')
 legend('off')
 if figSave
-    figSaveAsFigEpsPng(gcf);
+    figSaveAsFigEpsPng(gcf,params.figSaveDir);
 end
 
 mCI = mdl.coefCI;
@@ -380,7 +435,7 @@ modPlotForPaper()
 xlabel('time (s)')
 ylabel('% \DeltaF/F')
 if figSave
-    figSaveAsFigEpsPng(gcf);
+    figSaveAsFigEpsPng(gcf,params.figSaveDir);
 end
 %}
 
@@ -441,7 +496,7 @@ set(gca,'xtick',1:length(BW),...
         'xticklabel',BW)
 ylabelLowHighPkRespRatio(params.colors);
 if figSave
-    figSaveAsFigEpsPng(gcf);
+    figSaveAsFigEpsPng(gcf,params.figSaveDir);
 end
 
 %ratio re PT/BF  within / outside octave
@@ -490,7 +545,7 @@ set(gca,'xtick',1:2,...
         'xticklabel',{'within','outside'})
 ylabelLowHighPkRespRatio(params.colors);
 if figSave
-    figSaveAsFigEpsPng(gcf);
+    figSaveAsFigEpsPng(gcf,params.figSaveDir);
 end
 
 
@@ -584,7 +639,7 @@ if plotBoxplot~=1
     ax = gca;
     ax.YAxis.TickLength = [0 0];
     if figSave
-        figSaveAsFigEpsPng(gcf);
+        figSaveAsFigEpsPng(gcf,params.figSaveDir);
     end
 end
 
@@ -725,7 +780,7 @@ text(2+(-1.*(b(1).XOffset)),2.5,strrep(prepost{1},'pre',''),...
     'Rotation',90,'Color','w','FontWeight','bold','FontSize',16)
 set(gca,'Position',[0.2000 0.100 0.6000 0.7150])
 if figSave
-    figSaveAsFigEpsPng(gcf);
+    figSaveAsFigEpsPng(gcf,params.figSaveDir);
 end
 
 %low/high pre and post
@@ -777,7 +832,7 @@ for ppID = 1:length(pp)
     end
     
     if figSave
-        figSaveAsFigEpsPng(gcf);
+        figSaveAsFigEpsPng(gcf,params.figSaveDir);
     end
     
     mCI = mdl.coefCI;
@@ -818,7 +873,7 @@ for cID = 1:length(lh)
         'Color',params.colors.lohiPost(cID,:),...
         'FontWeight','bold','interpreter', 'tex');
     if figSave
-        figSaveAsFigEpsPng(gcf);
+        figSaveAsFigEpsPng(gcf,params.figSaveDir);
     end
     fprintf('%s: pre/post n = %d\n',lh{cID},sum(all(~isnan([pre post]),2)))
     [~,~,normBool] = sigDiffCalc(pre,post);
@@ -864,7 +919,7 @@ modPlotForPaper(true)
 hLabel = ylabelLowHighPkRespRatio(params.colors);
 xticklabels('')
 if figSave
-    figSaveAsFigEpsPng(gcf);
+    figSaveAsFigEpsPng(gcf,params.figSaveDir);
 end
 
 fprintf('ratio n = %d \n',sum(all(~isnan(horzcat(pkRespT.pkRatio{:})),2)))
@@ -920,7 +975,7 @@ xlabel('time (s)')
 ylabel('% \DeltaF/F')
 end
 if figSave
-    figSaveAsFigEpsPng(gcf);
+    figSaveAsFigEpsPng(gcf,params.figSaveDir);
 end
 
 
@@ -1001,7 +1056,7 @@ set(gca,'yticklabel',[]);
 modPlotForPaper();
 xlabel('time (s)');
 if figSave
-    figSaveAsFigEpsPng(gcf);
+    figSaveAsFigEpsPng(gcf,params.figSaveDir);
 end
 
 %over epoch
@@ -1048,7 +1103,7 @@ set(gca,'xtick',1:2,...
     ['\color[rgb]{' highStr '} HIGH']})
 set(gcf,'Position',[150 244.5000 369 420])
 if figSave
-    figSaveAsFigEpsPng(gcf);
+    figSaveAsFigEpsPng(gcf,params.figSaveDir);
 end
 
 
@@ -1134,7 +1189,7 @@ xlim([9 14])
 xlabel('time (s)')
 set(gcf,'Position',[287 302.5000 674 455])
 if figSave
-    figSaveAsFigEpsPng(gcf);
+    figSaveAsFigEpsPng(gcf,params.figSaveDir);
 end
 
 % 11.6-12 scatter
@@ -1177,7 +1232,7 @@ set(gca,'xtick',1:2,...
     ['\color[rgb]{' highStr '} HIGH']})
 set(gcf,'Position',[150 244.5000 369 420])
 if figSave
-    figSaveAsFigEpsPng(gcf);
+    figSaveAsFigEpsPng(gcf,params.figSaveDir);
 end
 
 %}
@@ -1276,7 +1331,7 @@ modPlotForPaper(true)
 hLabel = ylabelLowHighPkRespRatio(params.colors);
 xticklabels('')
 if figSave
-    figSaveAsFigEpsPng(gcf);
+    figSaveAsFigEpsPng(gcf,params.figSaveDir);
 end
 
 fprintf('ratio n = %d \n',sum(all(~isnan(horzcat(pkRespT.pkRatio{:})),2)))
@@ -1318,7 +1373,7 @@ end
 hL = legend('mean','SEM');
 hL.Box = 'off';
 if figSave
-    figSaveAsFigEpsPng(gcf);
+    figSaveAsFigEpsPng(gcf,params.figSaveDir);
 end
 
 if adtest(dBF)
@@ -1382,7 +1437,7 @@ modPlotForPaper(true)
 hLabel = ylabelLowHighPkRespRatio(params.colors);
 xticklabels('')
 if figSave
-    figSaveAsFigEpsPng(gcf);
+    figSaveAsFigEpsPng(gcf,params.figSaveDir);
 end
 
 fprintf('ratio n = %d \n',sum(all(~isnan(horzcat(pkRespT.pkRatio{:})),2)))
@@ -1453,7 +1508,7 @@ ylabel({'high contrast','peak % \DeltaF/F'},...
     strjoin({'pre','post'},'|'),'match'),'p','P')],''))(2,:),'interpreter', 'tex')
 legend('off')
 if figSave
-    figSaveAsFigEpsPng(gcf);
+    figSaveAsFigEpsPng(gcf,params.figSaveDir);
 end
 fprintf('lo>hi %d | hi>lo %d | total %d \n',...
     sum((lo>hi)),sum((hi>lo)),sum(all(~isnan([lo hi]),2)));
@@ -1504,7 +1559,7 @@ modPlotForPaper()
 xlabel('time (s)')
 ylabel('% \DeltaF/F')
 if figSave
-    figSaveAsFigEpsPng(gcf);
+    figSaveAsFigEpsPng(gcf,params.figSaveDir);
 end
 
 %}
@@ -1596,7 +1651,7 @@ if plotBoxplot ~= 1
     ax = gca;
     ax.YAxis.TickLength = [0 0];
     if figSave
-        figSaveAsFigEpsPng(gcf);
+        figSaveAsFigEpsPng(gcf,params.figSaveDir);
     end
 end
 
@@ -1644,7 +1699,7 @@ if plotBoxplot == 1
         ['\color[rgb]{' highStr '} HIGH']})
     set(gcf,'Position',[150 244.5000 369 420])
     if figSave
-        figSaveAsFigEpsPng(gcf);
+        figSaveAsFigEpsPng(gcf,params.figSaveDir);
     end
 end
 
