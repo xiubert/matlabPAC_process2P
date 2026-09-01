@@ -242,7 +242,7 @@ Small-*n* handling is a contract enforced in `helperFcns/cohort/`, not per-plot:
 
 > `combinetable.m` (in the data directory) is **retired** — it recorded no membership, validated nothing, and its "multiple regions" branch corrupted `roiID` by doing arithmetic on a string. Use `aggregateStimGroup`.
 
-For the FRA/best-frequency join, pre→post treatment comparisons, cell-type splits and the manuscript figures, see the [cohort-table path appendix](#appendix--the-cohort-table-path) — a separate route that this one does not replace.
+For **additional CGC figures** this path does not produce — the FRA/best-frequency join, pre→post treatment comparisons, PV/SOM cell-type splits, bandwidth tuning and the manuscript figures — refer to [`stimulusSpecific/extraCGC/`](#appendix--additional-cgc-figures-stimulusspecificextracgc). It is a separate route that this one does not replace.
 
 ---
 
@@ -301,67 +301,81 @@ helperFcns/
 
 ---
 
-## Appendix — the cohort-table path
+## Appendix — additional CGC figures (`stimulusSpecific/extraCGC/`)
 
-A second, older route that builds one flat `Tinput` table across animals and
-re-derives dF/F at plot time. **It is not superseded** — it does things the
-condition-group path does not — but it is not the default either.
+**Where to look for CGC analyses the condition-group path does not cover.** A
+second, older route: `compileCohortData` builds one flat `Tinput` table across
+animals, and `plotCohortData` produces figures from it. Every section is
+CGC-specific. It is **not superseded** — it is the only place several analyses
+exist — but it is not the default either.
 
-**Use the condition-group path (section 3) for** comparing treatment groups:
-RLF, dF/F re level, contrast traces, low-vs-high peaks, significant-cell
-counts. It consumes the per-animal *processed* tables, so every group inherits
-one analysis convention and carries a provenance stamp.
+**Use the condition-group path ([section 3](#3-condition-groups--aggregatestimgroup--the-group-plotters)) for**
+comparing treatment groups: RLF, dF/F re level, contrast traces, low-vs-high
+peaks, significant-cell counts. It consumes the per-animal *processed* tables,
+so every group inherits one analysis convention and carries a provenance stamp.
 
-**Reach for this path for** analyses the group path has no equivalent of:
+**Refer to `extraCGC/` for** figures that path has no equivalent of:
 
-- the **FRA / best-frequency join** (`compileAnmlFRA` → `BFuDB`, keeping only
-  tone-responsive cells with `dPrime > 0`) — the group path does not touch FRA data
-- **pre → post treatment** comparisons
-- **cell-type splits** (PV & SOM sections)
-- bandwidth / octave, DRC offset and contrast-change supplementals
-- the manuscript figures, via `matlabPAC_CGCplot/plotDataTable.m`, which is a
-  5-section curated extract of `plotCohortData.m`'s 14
+| Analysis | `plotCohortData.m` section |
+|---|---|
+| PT response ratio vs. PT onset | `PN \| PRE: PT onset` |
+| sustained DRC response, pre and post | `PN \| PRE: dFF_DRC`, `PN \| POST: dFF_DRC` |
+| peak scatter + traces re contrast | `PN \| PRE: dFF_PT \| scatterplot and traces re contrast` |
+| bandwidth / octave tuning | `PN \| PRE: dFF_PT \| BW, OCT` |
+| **pre → post treatment** | `PN \| PRE --> POST: dFF_PT` |
+| DRC offset *(supplemental)* | `PN \| PRE: DRC OFFSET` |
+| contrast-change dF/F *(supplemental)* | `PN \| PRE: DRC contrast change dFF` |
+| ZX1 re tuning *(supplemental)* | `PN \| PRE --> POST: ZX1 re tuning` |
+| ZnT3 pre → post response ratio | `ZnT3?? \| PRE --> POST: dFF_PT RATIO` |
+| **PV & SOM cell types** | `PV & SOM \| PRE OR POST: ...` (two sections) |
 
-### Caveats before using it
+Each block is wrapped in `%{...%}` and run independently. It also uniquely
+provides the **FRA / best-frequency join** (`compileAnmlFRA` → `BFuDB`, keeping
+only tone-responsive cells with `dPrime > 0`) — the group path never touches FRA
+data. `matlabPAC_CGCplot/plotDataTable.m` is a 5-section curated extract of
+these 14, for the manuscript figures.
 
-- Both scripts now **prompt** rather than carrying hardcoded paths.
-  `plotCohortData.m` asks for the `*_dataTable.mat` and derives the matching
-  `*_params.mat` from the same prefix; preset `cohortDataFile` in the workspace
-  to skip the dialog. Missing parameters are filled with defaults per field, so
-  a params file saved by an older revision still works.
-- **dF/F is recomputed at plot time** from the canonical `F` column rather than
-  reused from the per-animal processed tables. Since 2026-09-01 it uses the same
-  *method* as `processCGC` and `plotDataTable` — additive `dFF_PT`, peak on the
-  `t >= tBasePT(1)` crop, one `pkPTframeBin` — so the two paths agree in
-  approach; the constants are still declared locally rather than read from
-  `stimGroupSpec`.
+### Things to know before using it
+
+- **The dF/F method matches `processCGC` as of 2026-09-01.** `dFF_PT` is the
+  additive `dFF_DRC − mean(dFF_DRC over tBasePT)`, the peak is taken on the
+  `t >= tBasePT(1)` crop so `pkFcalc`'s baseline is the pre-tone window, and one
+  `pkPTframeBin` is used throughout. It previously used a *divisive*
+  `(F − F0_PT)/F0_PT` off raw fluorescence, with two different frame bins in
+  different sections. **Figures made before that change are not comparable with
+  figures made after** — on the CaMKII sample cohort, peak dF/F median moved
+  0.0542 → 0.0611 (r = 0.95 old vs new) and the per-trial significance rate
+  48.8% → 69.0%.
+- The constants (`tBaseDRC`, `tBasePT`, `pkPTsigSD`, `pkPTframeBin`) are still
+  declared locally rather than read from `stimGroupSpec`, so the *method* agrees
+  with the group path but the values could still drift apart.
+- dF/F is recomputed at plot time from the canonical `F` column, not reused from
+  the per-animal processed tables.
 - `compileCohortData.m` re-indexes `animal` and `roiID` to sequential integers,
-  so cell identity is not comparable with group files.
-- Its call into `compileAnmlROItables` was **broken until 2026-08-31** (wrong
-  argument order), so anything produced before then came from an older
-  revision.
+  so cell identity is **not** comparable with group files.
+- Both scripts prompt rather than carrying hardcoded paths. `plotCohortData.m`
+  asks for the `*_dataTable.mat` and derives the matching `*_params.mat` from
+  the same prefix; preset `cohortDataFile` in the workspace to skip the dialog.
+  Missing parameters are filled per field, so an older params file still works.
+- `compileCohortData.m`'s call into `compileAnmlROItables` was **broken until
+  2026-08-31** (wrong argument order), so anything produced before then came
+  from an older revision.
 
 ### A1. Compile the cohort table — `stimulusSpecific/extraCGC/compileCohortData.m`
 
-A separate, older path that builds the flat `Tinput` table for the manuscript figures in `plotCohortData.m` / `matlabPAC_CGCplot/plotDataTable.m`. Unlike step 2 it re-derives dF/F at plot time and re-indexes IDs as sequential integers. Edit the parameters block at the top (`cohortName`, `family`).
+Builds the flat `Tinput` table that A2 and `matlabPAC_CGCplot/plotDataTable.m`
+consume. Edit the parameters block at the top (`cohortName`, `family`).
 
 - `compileAnmlFRA` — collects FRA maps and BF estimates across animals
 - `compileAnmlROItables(family, params)` — collects stimulus/response tables per animal, validating each against its family contract before reducing columns
 - Joins BF data into the response table; keeps only tone-responsive cells (`dPrime > 0`)
 - Saves `<cohortName>_dataTable.mat` and `<cohortName>_params.mat`
 
----
-
 ### A2. Plot the cohort table — `stimulusSpecific/extraCGC/plotCohortData.m`
 
-Loads the compiled cohort table and produces analysis figures. Each analysis block is wrapped in `%{...%}` and run independently.
+Produces the figures listed above. Prompts for the data table, then run whichever
+`%{...%}` section you need.
 
-- Computes dF/F relative to DRC and pure-tone (PT) baseline windows
-- Extracts peak dF/F responses at PT onset using `pkFcalc`
-- Analyses include: PT response ratio vs. PT onset, sustained DRC response, pre/post treatment comparisons
-- Statistical testing via `sigDiffCalc` (parametric or Wilcoxon) with permutation test fallback
-
----
-
-
----
+- `dFF` section computes `dFF_DRC` then the additive `dFF_PT`, and peak PT responses via `pkFcalc`
+- Statistical testing via `sigDiffCalc` (parametric or Wilcoxon) with a permutation-test fallback
+- Figures save to `params.figSaveDir` (defaults to the data table's folder) when a section sets `figSave = true`
