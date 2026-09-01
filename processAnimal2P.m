@@ -22,7 +22,16 @@
 %                          via stimParam2ROI
 %
 % OUTPUT: tifFileList struct with motion- and neuropil-corrected fluorescence
-%         traces (SCALEDfissaFroi, shape: ROI x frames) for each tif.
+%         traces (SCALEDfissaFroi, shape: ROI x frames) for each tif, plus one
+%         <animal>_anmlROI_<Family>stimTable_RAW.mat per stimulus family.
+%
+% NEXT (this script is not the end of the per-animal path): the _raw tables
+% hold traces aligned to stimuli but NO dF/F and no peak responses. Run the
+% per-stimulus script for each family this animal has --
+%   processBPN2P   ->  <animal>_anmlROI_BPNstimTable.mat
+%   processCGC     ->  <animal>_anmlROI_CGCstimTable.mat
+% -- and only then aggregate across animals with aggregateStimGroup and plot
+% with plotBPNgroup / plotCGCgroup. See README section 2.
 %
 
 clearvars;close all;clc;
@@ -509,4 +518,21 @@ save(fullfile(dataPath,[animal '_tifFileList.mat']),...
 
 %% 10. Align stimulus parameters to corrected traces
 % Requires _Pulses.mat files co-located with tifs.
+% Writes one _raw table per stimulus family present.
 [pulseLegend2P,stimGroupIDX,ROIoutputTables] = stimParam2ROI(dataPath);
+
+%% 11. NEXT STEP - per-animal dF/F and peak responses  [RUN SEPARATELY]
+% The _raw tables above carry stimulus-aligned traces but no dF/F and no peak
+% responses. Those are per-animal quantities (baselines and significance are
+% computed within an animal), so they must be computed before any grouping.
+%
+%   processBPN2P     % if this animal has BPN tifs
+%   processCGC       % if this animal has PT-in-contrast tifs
+%
+% Each reads its _raw table and writes the processed
+% <animal>_anmlROI_<Family>stimTable.mat, which is what aggregateStimGroup
+% reads. Aggregating before this step raises aggregateStimGroup:notProcessed.
+%
+% Then, once per condition group:
+%   aggregateStimGroup(manifest)          % -> <Family>_Group<g>.mat
+%   plotBPNgroup / plotCGCgroup           % group figures

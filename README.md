@@ -69,7 +69,40 @@ The path runs through `processAnimal2P.m` with **no manual intervention**, assum
 
 ### 2. Condition groups — `aggregateStimGroup` + the group plotters
 
-The path for comparing **treatment/condition groups** (Group A vs B vs …). Aggregation happens *after* per-animal dF/F and peak detection, because baselines and significance are per-animal quantities.
+The path for comparing **treatment/condition groups** (Group A vs B vs …).
+
+#### End-to-end, from raw tifs to a group figure
+
+```
+PER ANIMAL, once each                    ONCE PER GROUP
+─────────────────────────────────        ──────────────────────────────
+processAnimal2P                          aggregateStimGroup(manifest)
+  §1–9  motion correction, FISSA           → <Family>_Group<g>.mat
+  §10   stimParam2ROI                             │
+        → <animal>_..._raw.mat                    ▼
+             │                                plotBPNgroup / plotCGCgroup
+             ▼
+processBPN2P  /  processCGC   ◄── the step that is easy to miss
+  → <animal>_..._stimTable.mat  (adds dF/F + peak responses)
+```
+
+```matlab
+% 1. per animal (repeat for every animal in the group)
+processAnimal2P                     % ends at stimParam2ROI -> _raw tables
+processBPN2P                        % _raw -> processed, per family
+processCGC                          %   run whichever families that animal has
+
+% 2. once per group
+aggregateStimGroup(manifest)        % -> BPN_GroupD.mat + BPN_GroupD_manifest.json
+
+% 3. plot
+plotBPNgroup('BPN_GroupD.mat')
+plotCGCgroup('CGC_GroupD.mat')
+```
+
+> **`processAnimal2P` alone is not enough.** It ends at `stimParam2ROI`, which writes the `_raw` table only. `aggregateStimGroup` reads the **processed** table, because that is what carries dF/F and peak responses — and those must be computed per animal, since baselines and significance are per-animal quantities. Skipping the `process*` step raises `aggregateStimGroup:notProcessed`, naming the animal and the script to run, rather than building a group missing its analysis columns. That is the whole point of the [`_raw` two-stage convention](#5-per-stimulus-analyses--stimulusspecific).
+
+An animal recorded with both stimulus families needs `processBPN2P` **and** `processCGC`; each writes its own processed table, and each family is aggregated into its own group file.
 
 **Build a group** from a manifest — a `.json` kept next to the data, so membership is reviewable and diffable:
 
@@ -90,7 +123,16 @@ plotBPNgroup('BPN_GroupD.mat');    % RLF, dF/F re sound level, peak re level
 plotCGCgroup('CGC_GroupD.mat');    % contrast traces, low-vs-high scatter, paired bar
 ```
 
-`processRLF.m` is the interactive entry point for the BPN plots.
+`processRLF.m` is the interactive entry point for the BPN plots — it prompts for a group file and calls `plotBPNgroup`.
+
+**Chase an outlier** seen in a group plot back to the cell and its individual repetitions:
+
+```matlab
+plotCGCgroup('CGC_GroupD.mat','showCells',true)   % every cell, faint, behind the mean
+plotCellTrials('CGC_GroupD.mat',"TO0007","7")     % every repetition of one cell
+```
+
+`makeGroupFigures` (in `etc/`) renders the whole standard set — per-group summaries, the cross-group RLF, significant-cell counts, and the per-cell trace check — into `etc/figures/`.
 
 **Check a group** without plotting:
 
