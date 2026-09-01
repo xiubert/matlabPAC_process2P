@@ -20,6 +20,12 @@ function out = plotCGCgroup(src,varargin)
 %                     The scatter and bar always use this set; sigOnly=false
 %                     relaxes only the trace panel, matching processCGC's
 %                     popTraceSigOnly toggle.
+%     'showCells'   - overlay every contributing cell's trace on the trace
+%                     panel, in a faint tint of that contrast's colour, so
+%                     outliers are visible. Default false. When on, the SEM
+%                     band is suppressed: the spread is shown directly by the
+%                     traces, and drawing both double-encodes it and hides
+%                     the individual lines.
 %     'traceXlim'   - x-limits (s) for the trace panel. Default [1 5].
 %     'scatterLim'  - axis limits for the low-vs-high scatter. Default [0 1].
 %     'minN'        - minimum cells for the paired test. Default 3.
@@ -43,7 +49,9 @@ function out = plotCGCgroup(src,varargin)
 %     .pk       nCells x nLevels peak dF/F (NaN where a contrast is missing)
 %     .sig      nCells x nLevels logical significance
 %     .valid    nCells x 1: present AND significant in every contrast
-%     .traces   per level: .level .label .t .mean .sem .n .showBand
+%     .traces   per level: .level .label .t .mean .sem .n .showBand, plus
+%               .cells (identity table) and .M (nCells x nFrames), so the
+%               outliers visible with showCells can be traced back to cells
 %     .stat     cohortStat result for the paired low-vs-high comparison
 %     .fit      linear fit of high vs low peak: .ok .reason .slope .slopeCI
 %               .n .r2 .mdl. The model is fit THROUGH THE ORIGIN
@@ -64,6 +72,7 @@ p = inputParser;
 addRequired(p,'src');
 addParameter(p,'plots',{'traces','scatter','bar'},@(x) iscellstr(x)||isstring(x)); %#ok<ISCLSTR>
 addParameter(p,'sigOnly',true,@islogical);
+addParameter(p,'showCells',false,@islogical);
 addParameter(p,'traceXlim',[1 5],@(x) isnumeric(x)&&numel(x)==2);
 addParameter(p,'scatterLim',[0 1],@(x) isnumeric(x)&&numel(x)==2);
 addParameter(p,'minN',3,@(x) isnumeric(x)&&isscalar(x));
@@ -77,6 +86,7 @@ addParameter(p,'verbose',true,@islogical);
 parse(p,src,varargin{:});
 plots      = lower(cellstr(p.Results.plots));
 sigOnly    = p.Results.sigOnly;
+showCells  = p.Results.showCells;
 traceXlim  = p.Results.traceXlim;
 scatterLim = p.Results.scatterLim;
 minN       = p.Results.minN;
@@ -155,16 +165,26 @@ if any(strcmp(plots,'traces'))
     end
     hold(ax,'on');
     hLine = gobjects(nL,1); leg = strings(nL,1);
-    out.traces = struct('level',{},'label',{},'t',{},'mean',{},'sem',{},'n',{},'showBand',{});
+    out.traces = struct('level',{},'label',{},'t',{},'mean',{},'sem',{},'n',{}, ...
+        'showBand',{},'cells',{},'M',{});
 
     for k = 1:nL
         mask = keepRow & T.(spec.levelVar) == levels(k);
-        [M,~,gi] = gatherCellTraces(T,mask,spec.cellAvgVar,spec.timeVar,'idVars',idv);
+        [M,cellsK,gi] = gatherCellTraces(T,mask,spec.cellAvgVar,spec.timeVar,'idVars',idv);
         s = cohortMeanSEM(M);
         out.traces(k) = struct('level',levels(k),'label',labels(k),'t',gi.t, ...
-            'mean',s.mean,'sem',s.sem,'n',s.n,'showBand',s.showBand);
+            'mean',s.mean,'sem',s.sem,'n',s.n,'showBand',s.showBand, ...
+            'cells',{cellsK},'M',M);
         if ~gi.ok; continue; end
-        if s.showBand
+        if showCells
+            % Faint per-cell traces, mean drawn bold on top. bandCol is the
+            % light tint of the contrast colour (lohiTracePre), further
+            % softened with line alpha so overlapping cells stay legible.
+            plot(ax,gi.t,M','Color',[bandCol(k,:) 0.55],'LineWidth',0.5, ...
+                'HandleVisibility','off');
+            plot(ax,gi.t,s.mean,'Color',lineCol(k,:),'LineWidth',2.2, ...
+                'HandleVisibility','off');
+        elseif s.showBand
             fillSEMplot(gi.t,s.mean,s.sem,lineCol(k,:),bandCol(k,:),ax);
         else
             plot(ax,gi.t,s.mean,'Color',lineCol(k,:),'LineWidth',1.8,'LineStyle','--');
@@ -175,7 +195,11 @@ if any(strcmp(plots,'traces'))
 
     drawPTmarker(ax,T);
     xlabel(ax,'time (s)'); ylabel(ax,'\DeltaF/F');
-    title(ax,'Population \DeltaF/F re contrast');
+    if showCells
+        title(ax,'\DeltaF/F re contrast (every cell + mean)');
+    else
+        title(ax,'Population \DeltaF/F re contrast');
+    end
     if ~isempty(traceXlim); xlim(ax,traceXlim); end
     % Explicit location, never 'best' -- see plotBPNgroup for why.
     keep = isgraphics(hLine);
