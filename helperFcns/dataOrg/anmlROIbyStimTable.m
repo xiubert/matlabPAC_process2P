@@ -1,9 +1,10 @@
-function [anmlROIbyStim,stimTable] = anmlROIbyStimTable(animal,tifFileListStim,moCorROI,tifStimParamTable)
+function [anmlROIbyStim,stimTable] = anmlROIbyStimTable(animal,tifFileListStim,moCorROI,tifStimParamTable,excludeNeg)
 % anmlROIbyStimTable  Build a per-(ROI, unique-stim) response table for
 %                     one animal, plus a deduplicated stim parameter table.
 %
 %   [anmlROIbyStim, stimTable] = anmlROIbyStimTable(animal, ...
 %                                tifFileListStim, moCorROI, tifStimParamTable)
+%   [...] = anmlROIbyStimTable(..., tifStimParamTable, excludeNeg)
 %
 %   Pivots per-tif fluorescence traces into a long-form table keyed by
 %   (animal, roiID, stimID), so all repetitions of a unique stimulus
@@ -31,6 +32,17 @@ function [anmlROIbyStim,stimTable] = anmlROIbyStimTable(animal,tifFileListStim,m
 %                        (scalar columns) or multi-pulse (cell columns
 %                        carrying N-by-1 per-pulse values plus a
 %                        totalPulses column with totalPulses>1).
+%     excludeNeg       - (optional, default true) logical. Screens for
+%                        movement artifacts and blanks failing stimulus
+%                        epochs to NaN. Takes effect ONLY on tifs that
+%                        hold more than one stimulus epoch, and only when
+%                        all of these hold: a totalPulses column with
+%                        totalPulses>1 for that tif, exactly one per-pulse
+%                        *sOnset column, and FISSA traces present. A tif
+%                        holding a single stimulus is left untouched
+%                        whatever this is set to, because both criteria
+%                        compare an epoch against the epoch before it in
+%                        the same recording. See 'Movement rejection'.
 %
 %   Outputs:
 %     anmlROIbyStim - (nROI * nUniqueStim) x M table:
@@ -64,19 +76,86 @@ function [anmlROIbyStim,stimTable] = anmlROIbyStimTable(animal,tifFileListStim,m
 %        Multi-pulse tifs are sliced into per-pulse windows using
 %        frameRate, trigDelay, and ISI before concatenation; single-pulse
 %        tifs are taken whole.
-%     6. Stitch the per-ROI cells back onto TanmlROI (which carries
+%     6. (only for tifs holding multiple stimulus epochs; see 'Movement
+%        rejection' below for the full gate) Screen each stimulus epoch
+%        for movement artifacts and blank the failures to NaN.
+%     7. Stitch the per-ROI cells back onto TanmlROI (which carries
 %        animal+roiID+stimID + the replicated stim params).
 %
+%   Movement rejection (excludeNeg):
+%     Screening runs only where ALL of the following hold, and is skipped
+%     otherwise:
+%       - excludeNeg is true (the default),
+%       - FISSA traces are present,
+%       - the tif carries totalPulses>1, i.e. multiple stimulus epochs in
+%         one recording, and
+%       - tifStimParamTable has exactly one per-pulse *sOnset column.
+%
+%     Of the families in this pipeline that is BPN alone. CGC has no
+%     totalPulses column at all and takes the single-pulse branch. Spont
+%     does set totalPulses>1, but carries no onset (there is no stimulus,
+%     only SpontMsStimLen), so neither criterion is defined for it and it
+%     is skipped with a warning rather than an error.
+%
+%     A tif that carries totalPulses>1 holds many stimulus epochs in one
+%     recording, so an epoch can be judged against its own pre-onset
+%     baseline and against the epoch before it. Two criteria are applied,
+%     and an epoch failing either is blanked:
+%
+%       1. Within-epoch dropout. Using that epoch's own baseline (the
+%          baselineSec immediately before its onset):
+%            a. some run of 3 consecutive response frames averages more
+%               than nSD below the baseline mean, OR
+%            b. the response never reaches the baseline mean at all.
+%          The response window opens respSkipSec after onset, to clear the
+%          onset transient, and is a fixed number of frames for every
+%          epoch so that onset cannot bias how often the test can trip.
+%
+%       2. Between-epoch drift. This epoch's baseline sits more than nSD
+%          below the PRECEDING epoch's baseline. Epoch 1 has no
+%          predecessor, and separate tifs are separate recordings, so the
+%          chain never crosses a tif boundary.
+%
+%     Verdicts are made on the across-ROI mean trace and applied to every
+%     ROI at once: movement displaces the whole field of view, not one
+%     cell. Failing epochs are kept as all-NaN rows rather than dropped,
+%     so rep indexing stays aligned with stimTable; pkFcalc and SEMcalc
+%     are NaN-aware. All statistics are read from unmodified traces, so
+%     blanking one epoch never changes another epoch's verdict.
+%
+%     This has to happen here, before the pivot below: criterion 2 needs
+%     each epoch's immediate predecessor within its tif, and that
+%     adjacency is lost once epochs are regrouped by stimID.
+%
 %   Notes:
+%     - Screening masks SCALEDfissaFroi ONLY. rawFroi, moCorRawFroi and
+%       fissaFroi keep every epoch, so after a run with excludeNeg=true
+%       the four trace columns no longer describe the same set of trials.
+%       This is deliberate — SCALEDfissaFroi is what downstream analysis
+%       consumes — but do not compare across those columns without
+%       re-applying the mask.
 %     - 'rawPulse' is removed from tmpT before dedup so pulse-index
 %       suffixes do not split otherwise-identical stim rows; the
 %       per-trial pulse indices are preserved as a pulseID cell column
 %       on stimTable.
 %     - frameRate is assumed identical across all tifs in tifFileListStim
 %       (the function uses tifFileListStim(1).frameRate for every stim).
+%     - The rejection response-window length is derived per call, i.e. per
+%       animal per stim family. Every BPN animal in this dataset is 5 Hz
+%       with ISI 4 s and onsets {1,2} and so resolves to 9 frames, but a
+%       group recorded with a different ISI or onset set would be screened
+%       at its own window length — worth checking before pooling animals.
 %     - This function errors if the sort-vs-unique reconciliation in the
 %       post/pre flip disagrees ('something went wrong here'); that
 %       indicates a unique/sortrows mismatch on the 'treatment' column.
+
+arguments
+    animal
+    tifFileListStim
+    moCorROI
+    tifStimParamTable
+    excludeNeg (1,1) logical = true
+end
 
 % list of fields inside stim to equalize
 fields = {'rawFroi','moCorRawFroi','fissaFroi','SCALEDfissaFroi'};
@@ -202,6 +281,82 @@ for nStim = 2:size(stimTable,1)
 end
 TanmlROI = [addvars(TanmlROI,stimID) roiTstim];
 
+% ---- movement-rejection tunables (multi-pulse groups only) ----------
+% Criteria are evaluated per stimulus epoch against that epoch's own
+% pre-onset baseline (criterion 1) and against the preceding epoch's
+% baseline (criterion 2). See 'Movement rejection' in the header.
+baselineSec = 1;    % s of pre-onset baseline used per epoch
+respSkipSec = 0.2;  % s skipped after onset before the response window opens
+nSD         = 3;    % SD multiplier for both criteria
+% mean of every run of 3 consecutive frames
+rollMean3   = @(v) (v(1:end-2) + v(2:end-1) + v(3:end)) / 3;
+
+% Resolve the per-pulse onset column once (BPNsOnset, PTsOnset, ...)
+% instead of hardcoding BPN, using the same endsWith idiom as
+% combineDiffOnset. Only multi-pulse groups reach the screening code, so
+% single-pulse families never consult this: CGC, for instance, carries a
+% PTsOnset column but no totalPulses column at all and takes the
+% single-pulse branch below.
+isMultiPulse = ismember('totalPulses',tifStimParamTable.Properties.VariableNames) ...
+    && any(tifStimParamTable.totalPulses > 1);
+screenMovement = excludeNeg && FISSA && isMultiPulse;
+if screenMovement
+    onsetVar = tifStimParamTable.Properties.VariableNames( ...
+        endsWith(tifStimParamTable.Properties.VariableNames,'sOnset'));
+    if ~isscalar(onsetVar) && ~isempty(onsetVar)
+        error('anmlROIbyStimTable:AmbiguousOnsetColumn', ...
+            'Multiple *sOnset columns found (%s); ambiguous.', ...
+            strjoin(onsetVar,', '));
+    end
+end
+if screenMovement && isempty(onsetVar)
+    % Multi-epoch is necessary but not sufficient: both criteria are
+    % defined relative to a stimulus onset. Spont sets totalPulses>1 but
+    % carries no onset at all (there is no stimulus - its only per-pulse
+    % field is SpontMsStimLen), so there is no baseline/response split to
+    % test. Skip rather than fail: excludeNeg defaults true, and erroring
+    % here would break a family the screening was never meant to cover.
+    warning('anmlROIbyStimTable:NoOnsetColumn', ...
+        ['excludeNeg is set, but tifStimParamTable has no per-pulse ' ...
+         '*sOnset column, so movement screening is undefined for this ' ...
+         'stim family. Skipping screening.']);
+    screenMovement = false;
+end
+if screenMovement
+    onsetVar = onsetVar{1};
+
+    % Hold the response window to a single length across the whole group:
+    % the shortest any (tif, onset) pair can supply. Left to run to the end
+    % of the ISI it varies with onset — at 5 Hz with ISI 4 s a 1 s onset
+    % yields 14 frames and a 2 s onset only 9 — so early-onset epochs would
+    % get ~1.7x more chances to trip criterion 1 purely from window length.
+    % Computed per call, i.e. per animal per stim family: every BPN animal
+    % here is 5 Hz / ISI 4 s / onsets {1,2} and so resolves to 9 frames, but
+    % a group recorded with a different ISI or onset set screens at its own
+    % length, which matters when pooling animals downstream.
+    respLenFrames = Inf;
+    for k = 1:height(tifStimParamTable)
+        if tifStimParamTable.totalPulses(k) <= 1, continue; end
+        kFrameRate = tifFileListStim(k).frameRate;
+        kOnsets    = cell2mat(tifStimParamTable.(onsetVar){k,1});
+        respLenFrames = min([respLenFrames; ...
+            kFrameRate*tifStimParamTable{k,'ISI'} - ...
+            round((kOnsets+respSkipSec)*kFrameRate)]);
+    end
+    if respLenFrames < 3
+        error('anmlROIbyStimTable:ShortResponseWindow', ...
+            ['Common response window is %d frame(s); criterion 1 rolls ' ...
+             'over 3 consecutive frames and needs at least 3.'],respLenFrames);
+    end
+    % criterion 2 rolls over the baseline window, so that needs 3 frames too
+    if baselineSec*min([tifFileListStim.frameRate]) < 3
+        error('anmlROIbyStimTable:ShortBaselineWindow', ...
+            ['baselineSec (%.3g s) gives fewer than 3 baseline frames at ' ...
+             '%.3g Hz; criterion 2 needs at least 3.'], ...
+            baselineSec,min([tifFileListStim.frameRate]));
+    end
+end
+
 %get roiF data by tif file
 tifRawF = {};
 tifMoCorRawF = {};
@@ -212,14 +367,87 @@ end
 for i = 1:length(tifFileListStim)
     if ismember('totalPulses', tifStimParamTable.Properties.VariableNames) && tifStimParamTable.totalPulses(i) > 1
         % multiple pulses for each tif
-        framesPreTrig = tifFileListStim(i).frameRate*tifStimParamTable{i,'trigDelay'};
-        framesPerPulse = tifFileListStim(i).frameRate*tifStimParamTable{i,'ISI'};
+        frameRate = tifFileListStim(i).frameRate;
+        framesPreTrig = frameRate*tifStimParamTable{i,'trigDelay'};
+        framesPerPulse = frameRate*tifStimParamTable{i,'ISI'};
         totalPulse = tifStimParamTable.totalPulses(i);
         tifRawF = [tifRawF;mat2cell(tifFileListStim(i).rawFroi(:,framesPreTrig+1:framesPreTrig+framesPerPulse*totalPulse),length(moCorROI),repmat(framesPerPulse,1,totalPulse))'];
         tifMoCorRawF = [tifMoCorRawF;mat2cell(tifFileListStim(i).moCorRawFroi(:,framesPreTrig+1:framesPreTrig+framesPerPulse*totalPulse),length(moCorROI),repmat(framesPerPulse,1,totalPulse))'];
         if FISSA
             tifFissaFroi = [tifFissaFroi,mat2cell(tifFileListStim(i).fissaFroi(:,framesPreTrig+1:framesPreTrig+framesPerPulse*totalPulse),length(moCorROI),repmat(framesPerPulse,1,totalPulse))'];
-            tifSCALEDfissaFroi = [tifSCALEDfissaFroi,mat2cell(tifFileListStim(i).SCALEDfissaFroi(:,framesPreTrig+1:framesPreTrig+framesPerPulse*totalPulse),length(moCorROI),repmat(framesPerPulse,1,totalPulse))'];
+            tmptifSCALEDfissaFroi = mat2cell(tifFileListStim(i).SCALEDfissaFroi(:,framesPreTrig+1:framesPreTrig+framesPerPulse*totalPulse),length(moCorROI),repmat(framesPerPulse,1,totalPulse))';
+            % ---------- movement / dropout rejection (excludeNeg) ----------
+            % Screened here, while epochs are still in acquisition order
+            % within their tif: criterion 2 needs each epoch's immediate
+            % predecessor, and that adjacency is destroyed by the
+            % pivot-by-stimID further down.
+            if screenMovement
+                % Movement shifts the whole field of view, so each verdict
+                % is made once per epoch on the across-ROI mean trace
+                % (dim 1 = ROI) and a failing epoch is blanked for all ROIs.
+                epochAvg = cellfun(@(x) mean(x,1), tmptifSCALEDfissaFroi, ...
+                    'UniformOutput', false);
+                % Onsets are randomised per pulse AND differ between tifs,
+                % so this must be indexed by i, not by a fixed tif: on
+                % TO0003, 20 of 30 pulses carry a different onset in tif 2
+                % than in tif 1. Reading tif 1's onsets for every tif put
+                % the "baseline" window inside the evoked response on 8 of
+                % those 30, inflating both the mean and the SD every
+                % criterion is measured against.
+                onsets = cell2mat(tifStimParamTable.(onsetVar){i,1});
+                if baselineSec > min(onsets)
+                    error('anmlROIbyStimTable:BaselineBeforeEpoch', ...
+                        ['baselineSec (%.3g s) exceeds the earliest onset ' ...
+                         '(%.3g s) in tif %d; the baseline window would ' ...
+                         'start before the epoch.'],baselineSec,min(onsets),i);
+                end
+
+                % Pass 1: per-epoch baseline statistics and criterion 1.
+                % Every statistic is read from the unmodified traces, so
+                % blanking one epoch can never alter another's verdict.
+                [baseMean,baseSD] = deal(nan(totalPulse,1));
+                baseRoll3 = cell(totalPulse,1);
+                failC1 = false(totalPulse,1);
+                for j = 1:totalPulse
+                    % round(): frame indices must be integers, and only
+                    % some frameRate/onset combinations land on them exactly
+                    baseIDX = round((onsets(j)-baselineSec)*frameRate)+1 : ...
+                              round(onsets(j)*frameRate);
+                    base = epochAvg{j,1}(baseIDX);
+                    baseMean(j)  = mean(base,2);
+                    baseSD(j)    = std(base,0,2);
+                    baseRoll3{j} = rollMean3(base);
+
+                    % respSkipSec skips the onset transient; the window is
+                    % then a fixed respLenFrames long for every epoch
+                    respStart = round((onsets(j)+respSkipSec)*frameRate)+1;
+                    resp = epochAvg{j,1}(respStart:respStart+respLenFrames-1);
+
+                    % C1a: some run of 3 consecutive response frames averages
+                    %      more than nSD below this epoch's own baseline
+                    %      (fluorescence dropout - cell left the plane), OR
+                    % C1b: the response never reaches its own baseline mean.
+                    failC1(j) = any(rollMean3(resp) < baseMean(j)-nSD*baseSD(j)) ...
+                        || max(resp) < baseMean(j);
+                end
+
+                % Pass 2, criterion 2: this epoch's baseline sits more than
+                % nSD below the PREVIOUS epoch's baseline. Epoch 1 has no
+                % predecessor, and separate tifs are separate recordings, so
+                % the chain never crosses a tif boundary.
+                failC2 = false(totalPulse,1);
+                for j = 2:totalPulse
+                    failC2(j) = any(baseRoll3{j} < baseMean(j-1)-nSD*baseSD(j-1));
+                end
+
+                % Blank each rejected epoch across all ROIs. Epochs are kept
+                % as all-NaN rows rather than dropped so rep indexing stays
+                % aligned with stimTable; pkFcalc/SEMcalc are NaN-aware.
+                for j = find(failC1 | failC2)'
+                    tmptifSCALEDfissaFroi{j,1}(:) = NaN;
+                end
+            end
+            tifSCALEDfissaFroi = [tifSCALEDfissaFroi,tmptifSCALEDfissaFroi];
         end
     else% one pulse for each tif
         tifRawF = [tifRawF; {tifFileListStim(i).rawFroi}'];
