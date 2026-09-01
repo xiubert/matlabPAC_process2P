@@ -210,6 +210,16 @@ if FISSA
     tifSCALEDfissaFroi = {};
 end
 for i = 1:length(tifFileListStim)
+    if butterfilter
+        fs=tifFileListStim(i).frameRate;% Sampling frequency (Hz)
+        fc=2;% Desired cutoff frequency (Hz)
+        n = 4;                 % Filter order
+        Wn = fc / (fs / 2);% Normalize cutoff frequency
+        [b, a] = butter(n, Wn);% Get filter coefficients
+        for j=1:size(tifFileListStim(i).SCALEDfissaFroi,1)
+            tifFileListStim(i).SCALEDfissaFroi(j,:) = filtfilt(b, a, tifFileListStim(i).SCALEDfissaFroi(j,:));
+        end
+    end
     if ismember('totalPulses', tifStimParamTable.Properties.VariableNames) && tifStimParamTable.totalPulses(i) > 1
         % multiple pulses for each tif
         framesPreTrig = tifFileListStim(i).frameRate*tifStimParamTable{i,'trigDelay'};
