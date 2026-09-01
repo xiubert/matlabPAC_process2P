@@ -273,6 +273,8 @@ stimulusSpecific/
   plotCGCgroup.m      — CGC group plots: contrast traces, low-vs-high, paired bar
   plotCellTrials.m    — every repetition of one cell, for chasing outliers
   processRLF.m        — interactive entry point for the BPN group plots
+  extraCGC/           — the cohort-table path (see the appendix):
+                        compileCohortData.m, plotCohortData.m
 
 helperFcns/
   tif/                — ScanImage tif reading (readSCIMtif, justLoadTif),
@@ -327,17 +329,19 @@ one analysis convention and carries a provenance stamp.
   `*_params.mat` from the same prefix; preset `cohortDataFile` in the workspace
   to skip the dialog. Missing parameters are filled with defaults per field, so
   a params file saved by an older revision still works.
-- **dF/F is recomputed at plot time** from the canonical `F` column, using
-  parameters set in the plotting script — not the values the `process*` scripts
-  computed per animal. The two paths can therefore disagree unless the
-  parameters match `stimGroupSpec`'s convention.
+- **dF/F is recomputed at plot time** from the canonical `F` column rather than
+  reused from the per-animal processed tables. Since 2026-09-01 it uses the same
+  *method* as `processCGC` and `plotDataTable` — additive `dFF_PT`, peak on the
+  `t >= tBasePT(1)` crop, one `pkPTframeBin` — so the two paths agree in
+  approach; the constants are still declared locally rather than read from
+  `stimGroupSpec`.
 - `compileCohortData.m` re-indexes `animal` and `roiID` to sequential integers,
   so cell identity is not comparable with group files.
 - Its call into `compileAnmlROItables` was **broken until 2026-08-31** (wrong
   argument order), so anything produced before then came from an older
   revision.
 
-### A1. Compile the cohort table — `compileCohortData.m`
+### A1. Compile the cohort table — `stimulusSpecific/extraCGC/compileCohortData.m`
 
 A separate, older path that builds the flat `Tinput` table for the manuscript figures in `plotCohortData.m` / `matlabPAC_CGCplot/plotDataTable.m`. Unlike step 2 it re-derives dF/F at plot time and re-indexes IDs as sequential integers. Edit the parameters block at the top (`cohortName`, `family`).
 
@@ -348,7 +352,7 @@ A separate, older path that builds the flat `Tinput` table for the manuscript fi
 
 ---
 
-### A2. Plot the cohort table — `plotCohortData.m`
+### A2. Plot the cohort table — `stimulusSpecific/extraCGC/plotCohortData.m`
 
 Loads the compiled cohort table and produces analysis figures. Each analysis block is wrapped in `%{...%}` and run independently.
 
