@@ -242,30 +242,7 @@ Small-*n* handling is a contract enforced in `helperFcns/cohort/`, not per-plot:
 
 > `combinetable.m` (in the data directory) is **retired** — it recorded no membership, validated nothing, and its "multiple regions" branch corrupted `roiID` by doing arithmetic on a string. Use `aggregateStimGroup`.
 
----
-
-### 4. Compile cohort data — `compileCohortData.m`
-
-A separate, older path that builds the flat `Tinput` table for the manuscript figures in `plotCohortData.m` / `matlabPAC_CGCplot/plotDataTable.m`. Unlike step 2 it re-derives dF/F at plot time and re-indexes IDs as sequential integers. Edit the parameters block at the top (`cohortName`, `family`).
-
-- `compileAnmlFRA` — collects FRA maps and BF estimates across animals
-- `compileAnmlROItables(family, params)` — collects stimulus/response tables per animal, validating each against its family contract before reducing columns
-- Joins BF data into the response table; keeps only tone-responsive cells (`dPrime > 0`)
-- Saves `<cohortName>_dataTable.mat` and `<cohortName>_params.mat`
-
----
-
-### 5. Plot cohort data — `plotCohortData.m`
-
-Loads the compiled cohort table and produces analysis figures. Each analysis block is wrapped in `%{...%}` and run independently.
-
-- Computes dF/F relative to DRC and pure-tone (PT) baseline windows
-- Extracts peak dF/F responses at PT onset using `pkFcalc`
-- Analyses include: PT response ratio vs. PT onset, sustained DRC response, pre/post treatment comparisons
-- Statistical testing via `sigDiffCalc` (parametric or Wilcoxon) with permutation test fallback
-
----
-
+For the FRA/best-frequency join, pre→post treatment comparisons, cell-type splits and the manuscript figures, see the [cohort-table path appendix](#appendix--the-cohort-table-path) — a separate route that this one does not replace.
 
 ---
 
@@ -319,3 +296,66 @@ helperFcns/
   sound/              — Ephus .signal file inspection (inspectSignalObject)
   general/            — utility functions (SEMcalc, sigDiffCalc, scaleZeroToOne, zero2nan)
 ```
+
+---
+
+## Appendix — the cohort-table path
+
+A second, older route that builds one flat `Tinput` table across animals and
+re-derives dF/F at plot time. **It is not superseded** — it does things the
+condition-group path does not — but it is not the default either.
+
+**Use the condition-group path (section 3) for** comparing treatment groups:
+RLF, dF/F re level, contrast traces, low-vs-high peaks, significant-cell
+counts. It consumes the per-animal *processed* tables, so every group inherits
+one analysis convention and carries a provenance stamp.
+
+**Reach for this path for** analyses the group path has no equivalent of:
+
+- the **FRA / best-frequency join** (`compileAnmlFRA` → `BFuDB`, keeping only
+  tone-responsive cells with `dPrime > 0`) — the group path does not touch FRA data
+- **pre → post treatment** comparisons
+- **cell-type splits** (PV & SOM sections)
+- bandwidth / octave, DRC offset and contrast-change supplementals
+- the manuscript figures, via `matlabPAC_CGCplot/plotDataTable.m`, which is a
+  5-section curated extract of `plotCohortData.m`'s 14
+
+### Caveats before using it
+
+- **`plotCohortData.m` will not run as-is**: lines 6–7 load hardcoded Windows
+  paths (`C:\Users\JIC402\OneDrive - University of Pittsburgh\...`).
+  `compileCohortData.m` was given `uigetdir` prompts; `plotCohortData.m` was not.
+- **dF/F is recomputed at plot time** from the canonical `F` column, using
+  parameters set in the plotting script — not the values the `process*` scripts
+  computed per animal. The two paths can therefore disagree unless the
+  parameters match `stimGroupSpec`'s convention.
+- `compileCohortData.m` re-indexes `animal` and `roiID` to sequential integers,
+  so cell identity is not comparable with group files.
+- Its call into `compileAnmlROItables` was **broken until 2026-08-31** (wrong
+  argument order), so anything produced before then came from an older
+  revision.
+
+### A1. Compile the cohort table — `compileCohortData.m`
+
+A separate, older path that builds the flat `Tinput` table for the manuscript figures in `plotCohortData.m` / `matlabPAC_CGCplot/plotDataTable.m`. Unlike step 2 it re-derives dF/F at plot time and re-indexes IDs as sequential integers. Edit the parameters block at the top (`cohortName`, `family`).
+
+- `compileAnmlFRA` — collects FRA maps and BF estimates across animals
+- `compileAnmlROItables(family, params)` — collects stimulus/response tables per animal, validating each against its family contract before reducing columns
+- Joins BF data into the response table; keeps only tone-responsive cells (`dPrime > 0`)
+- Saves `<cohortName>_dataTable.mat` and `<cohortName>_params.mat`
+
+---
+
+### A2. Plot the cohort table — `plotCohortData.m`
+
+Loads the compiled cohort table and produces analysis figures. Each analysis block is wrapped in `%{...%}` and run independently.
+
+- Computes dF/F relative to DRC and pure-tone (PT) baseline windows
+- Extracts peak dF/F responses at PT onset using `pkFcalc`
+- Analyses include: PT response ratio vs. PT onset, sustained DRC response, pre/post treatment comparisons
+- Statistical testing via `sigDiffCalc` (parametric or Wilcoxon) with permutation test fallback
+
+---
+
+
+---
