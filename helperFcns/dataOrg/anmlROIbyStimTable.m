@@ -71,16 +71,61 @@ function [anmlROIbyStim,stimTable] = anmlROIbyStimTable(animal,tifFileListStim,m
 %        Multi-pulse tifs are sliced into per-pulse windows using
 %        frameRate, trigDelay, and ISI before concatenation; single-pulse
 %        tifs are taken whole.
-%     6. Stitch the per-ROI cells back onto TanmlROI (which carries
+%     6. (multi-pulse + FISSA + excludeNeg only) Screen each stimulus
+%        epoch for movement artifacts and blank the failures to NaN.
+%        See 'Movement rejection' below.
+%     7. Stitch the per-ROI cells back onto TanmlROI (which carries
 %        animal+roiID+stimID + the replicated stim params).
 %
+%   Movement rejection (excludeNeg, multi-pulse groups only):
+%     A tif that carries totalPulses>1 holds many stimulus epochs in one
+%     recording, so an epoch can be judged against its own pre-onset
+%     baseline and against the epoch before it. Two criteria are applied,
+%     and an epoch failing either is blanked:
+%
+%       1. Within-epoch dropout. Using that epoch's own baseline (the
+%          baselineSec immediately before its onset):
+%            a. some run of 3 consecutive response frames averages more
+%               than nSD below the baseline mean, OR
+%            b. the response never reaches the baseline mean at all.
+%          The response window opens respSkipSec after onset, to clear the
+%          onset transient, and is a fixed number of frames for every
+%          epoch so that onset cannot bias how often the test can trip.
+%
+%       2. Between-epoch drift. This epoch's baseline sits more than nSD
+%          below the PRECEDING epoch's baseline. Epoch 1 has no
+%          predecessor, and separate tifs are separate recordings, so the
+%          chain never crosses a tif boundary.
+%
+%     Verdicts are made on the across-ROI mean trace and applied to every
+%     ROI at once: movement displaces the whole field of view, not one
+%     cell. Failing epochs are kept as all-NaN rows rather than dropped,
+%     so rep indexing stays aligned with stimTable; pkFcalc and SEMcalc
+%     are NaN-aware. All statistics are read from unmodified traces, so
+%     blanking one epoch never changes another epoch's verdict.
+%
+%     This has to happen here, before the pivot below: criterion 2 needs
+%     each epoch's immediate predecessor within its tif, and that
+%     adjacency is lost once epochs are regrouped by stimID.
+%
 %   Notes:
+%     - Screening masks SCALEDfissaFroi ONLY. rawFroi, moCorRawFroi and
+%       fissaFroi keep every epoch, so after a run with excludeNeg=true
+%       the four trace columns no longer describe the same set of trials.
+%       This is deliberate — SCALEDfissaFroi is what downstream analysis
+%       consumes — but do not compare across those columns without
+%       re-applying the mask.
 %     - 'rawPulse' is removed from tmpT before dedup so pulse-index
 %       suffixes do not split otherwise-identical stim rows; the
 %       per-trial pulse indices are preserved as a pulseID cell column
 %       on stimTable.
 %     - frameRate is assumed identical across all tifs in tifFileListStim
 %       (the function uses tifFileListStim(1).frameRate for every stim).
+%     - The rejection response-window length is derived per call, i.e. per
+%       animal per stim family. Every BPN animal in this dataset is 5 Hz
+%       with ISI 4 s and onsets {1,2} and so resolves to 9 frames, but a
+%       group recorded with a different ISI or onset set would be screened
+%       at its own window length — worth checking before pooling animals.
 %     - This function errors if the sort-vs-unique reconciliation in the
 %       post/pre flip disagrees ('something went wrong here'); that
 %       indicates a unique/sortrows mismatch on the 'treatment' column.
