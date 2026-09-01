@@ -67,19 +67,57 @@ The path runs through `processAnimal2P.m` with **no manual intervention**, assum
 
 ---
 
-### 2. Compile cohort data — `compileCohortData.m`
+### 2. Condition groups — `aggregateStimGroup` + the group plotters
 
-Aggregates per-animal outputs into a single cohort-level table. Edit the parameters block at the top.
+The path for comparing **treatment/condition groups** (Group A vs B vs …). Aggregation happens *after* per-animal dF/F and peak detection, because baselines and significance are per-animal quantities.
+
+**Build a group** from a manifest — a `.json` kept next to the data, so membership is reviewable and diffable:
+
+```matlab
+manifest = struct('group','D','family','BPN', ...
+                  'animals',["TO0006","TO0007"], ...
+                  'cohortRoot','/media/DATA/Ophys/Jinbo/TOMT', ...
+                  'outDir','/media/DATA/Ophys/Jinbo/TOMT/aggregate data');
+aggregateStimGroup(manifest);            % or aggregateStimGroup('BPN_GroupD_manifest.json')
+```
+
+Writes `<Family>_Group<g>.mat` containing `anmlROIbyStim` (unchanged variable name — existing scripts keep working) plus a `groupInfo` stamp recording the animals, per-animal cell counts, time axis, source files, and **the analysis convention in force**. That last field is what makes a convention mismatch between groups visible instead of silent.
+
+**Plot a group** — both handle any group size, including a single animal, and state cells/mice on every panel:
+
+```matlab
+plotBPNgroup('BPN_GroupD.mat');    % RLF, dF/F re sound level, peak re level
+plotCGCgroup('CGC_GroupD.mat');    % contrast traces, low-vs-high scatter, paired bar
+```
+
+`processRLF.m` is the interactive entry point for the BPN plots.
+
+**Check a group** without plotting:
+
+```matlab
+validateStimGroup('CGC_GroupD.mat')   % required columns, cell identity, time axis,
+                                      % trace widths, frame rates, column order
+loadStimGroup('CGC_GroupD.mat')       % load + validate + cross-check the manifest
+```
+
+Small-*n* handling is a contract enforced in `helperFcns/cohort/`, not per-plot: zero cells renders a labelled empty panel, one cell gets no SEM band, a single-animal group is stamped as carrying no across-animal inference, and a test below `minN` reports why it was skipped rather than emitting `p = NaN`.
+
+> `combinetable.m` (in the data directory) is **retired** — it recorded no membership, validated nothing, and its "multiple regions" branch corrupted `roiID` by doing arithmetic on a string. Use `aggregateStimGroup`.
+
+---
+
+### 3. Compile cohort data — `compileCohortData.m`
+
+A separate, older path that builds the flat `Tinput` table for the manuscript figures in `plotCohortData.m` / `matlabPAC_CGCplot/plotDataTable.m`. Unlike step 2 it re-derives dF/F at plot time and re-indexes IDs as sequential integers. Edit the parameters block at the top (`cohortName`, `family`).
 
 - `compileAnmlFRA` — collects FRA maps and BF estimates across animals
-- `compileAnmlROItables` — collects stimulus/response tables per animal
+- `compileAnmlROItables(family, params)` — collects stimulus/response tables per animal, validating each against its family contract before reducing columns
 - Joins BF data into the response table; keeps only tone-responsive cells (`dPrime > 0`)
-- Re-indexes animal and ROI IDs as sequential integers
 - Saves `<cohortName>_dataTable.mat` and `<cohortName>_params.mat`
 
 ---
 
-### 3. Plot cohort data — `plotCohortData.m`
+### 4. Plot cohort data — `plotCohortData.m`
 
 Loads the compiled cohort table and produces analysis figures. Each analysis block is wrapped in `%{...%}` and run independently.
 
@@ -90,9 +128,11 @@ Loads the compiled cohort table and produces analysis figures. Each analysis blo
 
 ---
 
-### 4. Per-stimulus analyses — `stimulusSpecific/`
+### 5. Per-stimulus analyses — `stimulusSpecific/`
 
-After step 10 above, `stimParam2ROI` writes one stim-aligned table per stimulus family (e.g. `<animal>_anmlROI_BPNstimTable_raw.mat`, `<animal>_anmlROI_CGCstimTable.mat`). Each script below loads its family's table, adds dF/F and peak metrics, and plots. Each resolves `dataPath` via `uigetdir` if not already in the workspace.
+After step 10 above, `stimParam2ROI` writes one stim-aligned `_raw` table per stimulus family (`<animal>_anmlROI_BPNstimTable_raw.mat`, `<animal>_anmlROI_CGCstimTable_raw.mat`). Each script below loads its family's `_raw` table, adds dF/F and peak metrics, plots, and writes the processed bundle to the same name **without** the `_raw` suffix. Each resolves `dataPath` via `uigetdir` if not already in the workspace.
+
+**`_raw` two-stage convention (BPN and CGC).** Keeping the raw and processed artifacts distinct means re-running a `process*` script never mutates its own input, and an animal that has not been processed yet has no processed file for `aggregateStimGroup` to pick up silently. Downstream consumers read the processed file.
 
 #### `processBPN2P.m` — band-pass noise (BPN), single animal
 
@@ -103,21 +143,21 @@ Two-stage: reads the `_raw` table from `stimParam2ROI`, writes the processed `<a
 - Trial-averages dF/F per row (`dFF_avg`), then runs `pkFcalc` on the cell-average to get peak dF/F + significance
 - Plots: single ROI × dB, single ROI all dB, population (between-cell SEM per dB), peak dF/F vs. dB
 
-#### `processRLF.m` — rate/response-level function across a cohort
+#### `processRLF.m` — rate-level function for a group
 
-Pools the **processed** BPN tables from multiple animals into one rate-level analysis.
+Interactive entry point for the BPN group plots: select a `BPN_Group<g>.mat` and it calls `plotBPNgroup`.
 
-- Concatenates each animal's `anmlROIbyStim` (cells kept distinct by `animal`+`roiID`)
 - Builds per-cell RLFs and dB thresholds via `tableRLF`; cells are included only with ≥ `nConsec` consecutive significant dB levels
-- Plots the cohort-mean RLF (with per-cell traces) via `plotRLF`
+- Plots the group-mean RLF, population dF/F re sound level, and peak dF/F re level
+- Assembling animals into a group is `aggregateStimGroup`'s job (see step 2), so this script no longer carries a list of per-animal paths
 
-#### `processCGC.m` — pure-tone-in-contrast (contrast gain control)
+#### `processCGC.m` — pure-tone-in-contrast (contrast gain control), single animal
 
-Single-stage; loads/saves `<animal>_anmlROI_CGCstimTable.mat`.
+Two-stage: reads `<animal>_anmlROI_CGCstimTable_raw.mat`, writes `<animal>_anmlROI_CGCstimTable.mat`. A pre-split animal with only the un-suffixed file is still handled — it is re-processed with its derived columns stripped first.
 
 - dF/F referenced first to a pre-DRC baseline (`dFF_DRC`), then additively to a pre-pure-tone baseline (`dFF_PT`), matching the manuscript method
-- Peak PT responses + significance from the **cell-average** trace (`dFF_PT_avg`), via `pkFcalc`
-- Plots: per-ROI PT traces (3×3 grid), population average trace, and low-vs-high contrast peak dF/F scatter / bar comparison
+- Peak PT responses + significance from the **cell-average** trace (`dFF_PT_avg`), via `pkFcalc`. The `t >= 1` crop before `pkFcalc` is load-bearing: it makes the significance baseline equal the `F0_PT` window
+- Plots: per-ROI dF/F grids (3×3), then delegates the population panels to `plotCGCgroup` so the single-animal and group cases run identical code
 
 #### `processFRA.m` — frequency response area mapping
 
@@ -146,9 +186,11 @@ GUIs/
 
 stimulusSpecific/
   processBPN2P.m      — per-animal band-pass noise (BPN) dF/F + peak analysis
-  processRLF.m        — cohort rate/response-level function across animals
-  processCGC.m        — pure-tone-in-contrast (contrast gain control) analysis
+  processCGC.m        — per-animal pure-tone-in-contrast (contrast gain control)
   processFRA.m        — frequency response area mapping from tifFileList
+  plotBPNgroup.m      — BPN group plots: RLF, dF/F re level, peak re level
+  plotCGCgroup.m      — CGC group plots: contrast traces, low-vs-high, paired bar
+  processRLF.m        — interactive entry point for the BPN group plots
 
 helperFcns/
   tif/                — ScanImage tif reading (readSCIMtif, justLoadTif),
@@ -156,8 +198,15 @@ helperFcns/
   dFF/                — dF/F computation (dFoFcalc), peak response detection (pkFcalc)
   FRA/                — FRA map construction (FRAmap), BF extraction, d-prime calculation
   RLF/                — rate-level functions (cellRLF, tableRLF) and plotting (plotRLF)
+  cohort/             — group-size-agnostic primitives shared by both family
+                        plotters: counts (groupN), trace/value stacking
+                        (gatherCellTraces, gatherCellValues), between-cell
+                        mean/SEM (cohortMeanSEM), guarded statistics
+                        (cohortStat), figure n-stamps (annotateN)
   dataOrg/            — FISSA output parsing, tifFileList assembly, stimulus table
-                        builders (stimParam2ROI, combineDiffOnset)
+                        builders (stimParam2ROI, combineDiffOnset); condition-group
+                        aggregation (stimGroupSpec, aggregateStimGroup,
+                        validateStimGroup, loadStimGroup)
   ROI/                — ROI mask ↔ polygon conversion, raw F extraction from masks
   plotting/           — SEM shaded plots (fillSEMplot), regression plots (regPlot),
                         paper-style formatting, figure export

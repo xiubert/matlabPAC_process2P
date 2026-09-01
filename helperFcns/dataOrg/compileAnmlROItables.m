@@ -128,6 +128,19 @@ for aNum = 1:numel(aDir)
     aData = load(matFile, varname);
     Ta = aData.(varname);
 
+    % Validate BEFORE the column reduction below -- the reduction drops the
+    % *Froi columns and renames the canonical trace to F, so the reduced table
+    % no longer matches the family contract. Problems are reported rather than
+    % raised, since this path historically tolerated partial cohorts.
+    if any(strcmp(family, stimGroupSpec()))
+        rep = validateStimGroup(Ta, family, 'verbose', false);
+        if ~rep.ok
+            warning('compileAnmlROItables:invalidAnimal', ...
+                '%s did not validate; compiling anyway:\n%s', animal, ...
+                strjoin(cellstr(rep.problems.message(rep.problems.severity=="error")), newline));
+        end
+    end
+
     %=== Canonical fluorescence column ====================================
     % F defaults to SCALEDfissaFroi (FISSA-scaled, motion-corrected dF/F
     % source used downstream). To swap sources for a non-FISSA dataset or
