@@ -28,6 +28,11 @@
 %   aggregateStimGroup and call plotCGCgroup on the group file rather than
 %   running this script.
 %
+%   PT FREQUENCY: an animal recorded with several pure-tone frequencies has
+%   more than one row per (ROI, contrast); set PTfreqSelect to choose one.
+%   With PTfreqSelect empty and several present, this raises
+%   processCGC:multiplePTfreq rather than picking silently.
+%
 %   See also plotCGCgroup, aggregateStimGroup, dFoFcalc, pkFcalc,
 %   getContrastColors, fillSEMplot
 
@@ -36,6 +41,17 @@
 tBaseDRC   = [-1.2 0];   % F0 window before DRC onset
 tBasePT    = [1 2];      % F0_PT window before pure tone (valid for PTsOnset==2)
 PTonsetSec = 2;          % pure-tone onset (s); used for plot markers/xlines
+
+% PT FREQUENCY SELECTION
+% An animal may have been recorded with more than one pure-tone frequency
+% crossed with contrast (TO0001 has 6484 and 30844 Hz), which gives several
+% rows per (ROI, contrast). The per-ROI peak matrix below assumes ONE row per
+% (ROI, contrast), and the historical group tables carry a single frequency per
+% animal -- so a frequency has to be chosen. [] means "use the only frequency
+% present" and raises a directive error if there is more than one. Set it here,
+% or define PTfreqSelect in the workspace before running (which is how
+% processAnimalStimFamilies passes it in).
+if ~exist('PTfreqSelect','var'); PTfreqSelect = []; end
 
 % peak-response detection
 pkPTframeBin = 4;        % peak-search window length (frames) after PT onset
@@ -95,6 +111,36 @@ else
         'Neither %s nor %s found in %s. Run stimParam2ROI first.',...
         [animal '_anmlROI_CGCstimTable_raw.mat'],...
         [animal '_anmlROI_CGCstimTable.mat'], dataPath);
+end
+
+%% PT frequency selection
+if ismember('PTfreq',anmlROIbyStim.Properties.VariableNames)
+    fq = unique(anmlROIbyStim.PTfreq);
+    if isempty(PTfreqSelect)
+        if numel(fq) > 1
+            error('processCGC:multiplePTfreq', ...
+                ['%s was recorded with %d pure-tone frequencies (%s Hz), so each ' ...
+                 'cell has %d rows per contrast and the per-ROI peak matrix is ' ...
+                 'ambiguous.\nSet PTfreqSelect (top of this script, or in the ' ...
+                 'workspace) to the frequency to analyse. The group tables carry ' ...
+                 'one frequency per animal.'], ...
+                animal, numel(fq), strjoin(compose('%g',fq'),', '), numel(fq));
+        end
+    else
+        keep = anmlROIbyStim.PTfreq == PTfreqSelect;
+        if ~any(keep)
+            error('processCGC:PTfreqNotPresent', ...
+                'PTfreqSelect = %g Hz is not in %s. Available: %s Hz.', ...
+                PTfreqSelect, animal, strjoin(compose('%g',fq'),', '));
+        end
+        fprintf('processCGC: %s -- selecting PTfreq %g Hz of [%s] (%d of %d rows)\n', ...
+            animal, PTfreqSelect, strjoin(compose('%g',fq'),', '), sum(keep), numel(keep));
+        anmlROIbyStim = anmlROIbyStim(keep,:);
+        if exist('stimTable','var') && istable(stimTable) && ...
+                ismember('PTfreq',stimTable.Properties.VariableNames)
+            stimTable = stimTable(stimTable.PTfreq==PTfreqSelect,:);
+        end
+    end
 end
 
 %% Setup

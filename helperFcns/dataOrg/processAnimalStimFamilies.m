@@ -30,6 +30,11 @@ function out = processAnimalStimFamilies(dataPath,varargin)
 %     'overwrite' - re-run a family whose processed table already exists.
 %                   Default true (the _raw input is never modified, so
 %                   re-running is safe and repeatable).
+%     'scriptVars'- struct of variables to define in the script's workspace
+%                   before it runs, for per-animal parameters the scripts read
+%                   from the workspace. e.g.
+%                     struct('PTfreqSelect',6484)
+%                   for an animal recorded with several pure-tone frequencies.
 %     'verbose'   - print progress. Default true.
 %
 %   Output (struct array), one element per family considered:
@@ -56,12 +61,14 @@ addRequired(p,'dataPath',@(x) ischar(x)||isstring(x));
 addParameter(p,'families',{},@(x) isempty(x)||iscellstr(x)||isstring(x)); %#ok<ISCLSTR>
 addParameter(p,'showPlots',false,@islogical);
 addParameter(p,'overwrite',true,@islogical);
+addParameter(p,'scriptVars',struct(),@isstruct);
 addParameter(p,'verbose',true,@islogical);
 parse(p,dataPath,varargin{:});
 dataPath  = char(p.Results.dataPath);
 families  = p.Results.families;
 showPlots = p.Results.showPlots;
 overwrite = p.Results.overwrite;
+scriptVars= p.Results.scriptVars;
 verbose   = p.Results.verbose;
 
 if ~isfolder(dataPath)
@@ -107,7 +114,7 @@ for i = 1:numel(families)
         set(0,'DefaultFigureVisible','off');
     end
     try
-        runFamilyScript(spec.processScript, dataPath, animal);
+        runFamilyScript(spec.processScript, dataPath, animal, scriptVars);
         rec.ok = isfile(proc);
         if ~rec.ok
             rec.reason = sprintf('%s ran but wrote no %s', spec.processScript, proc);
@@ -141,10 +148,16 @@ end
 end
 
 %% ---- helper ----
-function runFamilyScript(scriptName, dataPath, animal) %#ok<INUSD>
+function runFamilyScript(scriptName, dataPath, animal, scriptVars) %#ok<INUSD>
 % Run the script in this isolated workspace. dataPath and animal are the two
 % variables the process* scripts look for; everything else they create stays
-% local to this function and never reaches the caller.
+% local to this function and never reaches the caller. scriptVars fields are
+% defined here too, so a script that reads a per-animal parameter from the
+% workspace (processCGC's PTfreqSelect) picks it up.
+fn = fieldnames(scriptVars);
+for k = 1:numel(fn)
+    eval([fn{k} ' = scriptVars.(fn{k});']); %#ok<EVLEQ>
+end
 scriptPath = which(scriptName);
 if isempty(scriptPath)
     error('processAnimalStimFamilies:scriptNotFound', ...

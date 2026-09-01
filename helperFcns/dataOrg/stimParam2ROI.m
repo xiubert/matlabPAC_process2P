@@ -134,6 +134,12 @@ save(fullfile(dataPath,[animal '_stimGroupIDX.mat']),'stimGroupIDX','-v7.3')
 
 %sort pure tone in contrast stims
 if sum(stimGroupIDX.ptStimIDX.tifFileList)>1
+    % Isolate this family: a failure here must not abort the whole
+    % function and cost the families that follow. The Spont branch is
+    % known-fragile (tabular/unique on non-char cell columns), and it
+    % sits BEFORE dContrast, so an unguarded error there silently cost
+    % dContrast too. Each family reports and the rest continue.
+    try
 
     % Build a per-tif stim-parameter table for the PT-in-contrast group:
     % one row per tif, scalar columns for per-tif params and cell columns
@@ -156,10 +162,22 @@ if sum(stimGroupIDX.ptStimIDX.tifFileList)>1
     save(fullfile(dataPath,[animal '_anmlROI_CGCstimTable_raw.mat']),...
         'anmlROIbyStim','stimTable','tifStimParamTable',...
         'dataPath','-v7.3')
+    catch ME
+        warning('stimParam2ROI:familyFailed',...
+            ['%s stim family failed for %s: %s\n' ...
+             'Other stim families are unaffected; no %s table was written.'],...
+            'PTinContrast',animal,ME.message,'PTinContrast');
+    end
 end
 
 %BPN
 if sum(stimGroupIDX.BPNStimIDX.tifFileList)>1
+    % Isolate this family: a failure here must not abort the whole
+    % function and cost the families that follow. The Spont branch is
+    % known-fragile (tabular/unique on non-char cell columns), and it
+    % sits BEFORE dContrast, so an unguarded error there silently cost
+    % dContrast too. Each family reports and the rest continue.
+    try
 
     % Build a per-tif stim-parameter table for the BPN group: one row per
     % tif, scalar columns for per-tif params (trigDelay, ISI, totalPulses)
@@ -183,6 +201,12 @@ if sum(stimGroupIDX.BPNStimIDX.tifFileList)>1
     save(fullfile(dataPath,[animal '_anmlROI_BPNstimTable_raw.mat']),...
         'anmlROIbyStim','stimTable','tifStimParamTable',...
         'dataPath','-v7.3')
+    catch ME
+        warning('stimParam2ROI:familyFailed',...
+            ['%s stim family failed for %s: %s\n' ...
+             'Other stim families are unaffected; no %s table was written.'],...
+            'BPN',animal,ME.message,'BPN');
+    end
 end
 
 % SPONT
@@ -204,6 +228,12 @@ end
 %     Cell array input must be a cell array of character vectors.
 %%%
 if sum(stimGroupIDX.spontStimIDX.tifFileList)>1
+    % Isolate this family: a failure here must not abort the whole
+    % function and cost the families that follow. The Spont branch is
+    % known-fragile (tabular/unique on non-char cell columns), and it
+    % sits BEFORE dContrast, so an unguarded error there silently cost
+    % dContrast too. Each family reports and the rest continue.
+    try
 
     % Build a per-tif stim-parameter table for the Spont group: one row
     % per tif, scalar columns for per-tif params (trigDelay, ISI,
@@ -227,10 +257,22 @@ if sum(stimGroupIDX.spontStimIDX.tifFileList)>1
     save(fullfile(dataPath,[animal '_anmlROI_SpontstimTable.mat']),...
         'anmlROIbyStim','stimTable','tifStimParamTable',...
         'dataPath','-v7.3')
+    catch ME
+        warning('stimParam2ROI:familyFailed',...
+            ['%s stim family failed for %s: %s\n' ...
+             'Other stim families are unaffected; no %s table was written.'],...
+            'Spont',animal,ME.message,'Spont');
+    end
 end
 
 %sort contrast change stimulus
 if sum(stimGroupIDX.contrastChangeIDX.tifFileList)>1
+    % Isolate this family: a failure here must not abort the whole
+    % function and cost the families that follow. The Spont branch is
+    % known-fragile (tabular/unique on non-char cell columns), and it
+    % sits BEFORE dContrast, so an unguarded error there silently cost
+    % dContrast too. Each family reports and the rest continue.
+    try
 
     % Build a per-tif stim-parameter table for the contrast-change group:
     % one row per tif, scalar columns for per-tif params and cell columns
@@ -253,5 +295,11 @@ if sum(stimGroupIDX.contrastChangeIDX.tifFileList)>1
     save(fullfile(dataPath,[animal '_anmlROI_dContrastTable.mat']),'anmlROIdContrast','dContrastTable',...
         'dContrastTifParamTable','dataPath','tifFileList','fissaScaleFactor',...
         'stimGroupIDX','pulseLegend2P','-v7.3')
+    catch ME
+        warning('stimParam2ROI:familyFailed',...
+            ['%s stim family failed for %s: %s\n' ...
+             'Other stim families are unaffected; no %s table was written.'],...
+            'dContrast',animal,ME.message,'dContrast');
+    end
 end
 
