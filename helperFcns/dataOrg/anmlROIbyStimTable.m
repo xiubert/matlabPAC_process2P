@@ -227,6 +227,29 @@ nSD         = 3;    % SD multiplier for both criteria
 % mean of every run of 3 consecutive frames
 rollMean3   = @(v) (v(1:end-2) + v(2:end-1) + v(3:end)) / 3;
 
+% Resolve the per-pulse onset column once (BPNsOnset, PTsOnset, ...)
+% instead of hardcoding BPN, using the same endsWith idiom as
+% combineDiffOnset. Only multi-pulse groups reach the screening code, so
+% single-pulse families never consult this: CGC, for instance, carries a
+% PTsOnset column but no totalPulses column at all and takes the
+% single-pulse branch below.
+isMultiPulse = ismember('totalPulses',tifStimParamTable.Properties.VariableNames) ...
+    && any(tifStimParamTable.totalPulses > 1);
+if excludeNeg && FISSA && isMultiPulse
+    onsetVar = tifStimParamTable.Properties.VariableNames( ...
+        endsWith(tifStimParamTable.Properties.VariableNames,'sOnset'));
+    if isempty(onsetVar)
+        error('anmlROIbyStimTable:NoOnsetColumn', ...
+            ['excludeNeg requires a per-pulse *sOnset column (e.g. ' ...
+             'BPNsOnset); none found in tifStimParamTable.']);
+    elseif ~isscalar(onsetVar)
+        error('anmlROIbyStimTable:AmbiguousOnsetColumn', ...
+            'Multiple *sOnset columns found (%s); ambiguous.', ...
+            strjoin(onsetVar,', '));
+    end
+    onsetVar = onsetVar{1};
+end
+
 %get roiF data by tif file
 tifRawF = {};
 tifMoCorRawF = {};
@@ -257,8 +280,20 @@ for i = 1:length(tifFileListStim)
                 % (dim 1 = ROI) and a failing epoch is blanked for all ROIs.
                 epochAvg = cellfun(@(x) mean(x,1), tmptifSCALEDfissaFroi, ...
                     'UniformOutput', false);
-                %TODO: BPN -> agnostic to stim type for other traces w/ multiple stim epochs eg. regex for sOnset
-                onsets = cell2mat(tifStimParamTable.BPNsOnset{1,1});
+                % Onsets are randomised per pulse AND differ between tifs,
+                % so this must be indexed by i, not by a fixed tif: on
+                % TO0003, 20 of 30 pulses carry a different onset in tif 2
+                % than in tif 1. Reading tif 1's onsets for every tif put
+                % the "baseline" window inside the evoked response on 8 of
+                % those 30, inflating both the mean and the SD every
+                % criterion is measured against.
+                onsets = cell2mat(tifStimParamTable.(onsetVar){i,1});
+                if baselineSec > min(onsets)
+                    error('anmlROIbyStimTable:BaselineBeforeEpoch', ...
+                        ['baselineSec (%.3g s) exceeds the earliest onset ' ...
+                         '(%.3g s) in tif %d; the baseline window would ' ...
+                         'start before the epoch.'],baselineSec,min(onsets),i);
+                end
 
                 % Pass 1: per-epoch baseline statistics and criterion 1.
                 % Every statistic is read from the unmodified traces, so
