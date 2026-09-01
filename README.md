@@ -4,6 +4,71 @@ MATLAB pipeline for processing two-photon calcium imaging data, from raw ScanIma
 
 ---
 
+## Pipeline at a glance
+
+```
+ RAW ACQUISITION                      per animal, once each
+ ───────────────                      ─────────────────────
+ *.tif  *_Pulses.mat                  processAnimal2P.m
+        │                               §1  tif inventory        → _tifFileLegend.mat
+        │                               §2  condition split      → _tifCondSplitLegend.mat
+        ▼                               §3  NoRMCorre            → NoRMCorred/*.tif
+                                        §4–5 ROI drawing  [GUI]  → _moCorrROI_<cond>.mat
+                                        §6  ROI matching
+                                        §7  raw F extraction     → _moCorr_Tifs_Params.mat
+                                        §8  FISSA        [PYTHON]→ NoRMCorred/FISSAoutput/matlab.mat
+                                        §9  FISSA parsing        → _tifFileList.mat
+                                       ─────────────────────────────────────────────────
+                                        §10 stimParam2ROI        → _anmlROI_<Fam>stimTable_raw.mat
+                                        §11 processAnimalStim-   → _anmlROI_<Fam>stimTable.mat
+                                            Families                (dF/F + peak responses)
+                                                    │
+ ONCE PER GROUP, PER FAMILY                        ▼
+ ──────────────────────────      aggregateStimGroup(manifest)
+                                   validate each animal, canonicalise column order,
+                                   concatenate, stamp provenance
+                                        → <Fam>_Group<g>.mat   { anmlROIbyStim , groupInfo }
+                                        → <Fam>_Group<g>_manifest.json
+                                                    │
+                                                    ▼
+                                 plotBPNgroup / plotCGCgroup / makeGroupFigures
+```
+
+### What each stage needs on disk
+
+| To run | Needs in the animal folder | Produced by |
+|---|---|---|
+| §3 motion correction | `*.tif` | acquisition |
+| §8 FISSA | `NoRMCorred/*.tif`, `FISSA_ROIs.npy` | §3, §4–5 |
+| §9 FISSA parsing | `NoRMCorred/FISSAoutput/matlab.mat` | §8 |
+| **§10 stim alignment** | **`<animal>_tifFileList.mat`**, **`<animal>_moCorrROI_*.mat`**, **`*_Pulses.mat`** | §9, §4–5, acquisition |
+| §11 per-stim analysis | `<animal>_anmlROI_<Fam>stimTable_raw.mat` | §10 |
+| `aggregateStimGroup` | `<animal>_anmlROI_<Fam>stimTable.mat` for every animal in the manifest | §11 |
+| group plotters | `<Fam>_Group<g>.mat` | `aggregateStimGroup` |
+
+**To resume at §10** an animal needs exactly three things: `_tifFileList.mat`, `_moCorrROI_*.mat`, and its `_Pulses.mat` files. `NoRMCorred/` and `FISSAoutput/` are *inputs to* §8–9 and are not read again afterwards — the fluorescence traces they produced already live inside `_tifFileList.mat`. Copying an animal without `NoRMCorred/` is therefore fine **if** `_tifFileList.mat` and `_moCorrROI_*.mat` came with it; copying only tifs and `_Pulses.mat` is not, because §4–5 (ROI drawing) is interactive and §8 (FISSA) is a Python step.
+
+### Validate and stamp
+
+`aggregateStimGroup` does two things beyond concatenating, and both are what make a group file trustworthy later.
+
+**Validate** — `validateStimGroup` checks a table against its family's contract: required columns present, no duplicate `(animal, roiID, stim)` rows, one common dF/F time axis, trace widths matching that axis, scalar peak/significance columns, uniform frame rate, and (optionally) column order and time axis against a reference. It returns a report of problems graded `error` / `warning` / `info`; it never modifies anything. Each per-animal table is validated *before* concatenation and the assembled group *after*, so a bad animal is refused rather than diluted into a group. `loadStimGroup` re-runs it on every load, and it can be called standalone on any group file.
+
+**Stamp** — a `groupInfo` struct saved alongside the table, recording:
+
+| field | why it matters |
+|---|---|
+| `convention` | the analysis parameters in force (`tBasePT`, `pkPTsigSD`, …). Groups built under different conventions are not comparable; `loadStimGroup` warns when a stamp no longer matches `stimGroupSpec` |
+| `animals`, `perAnimal`, `nCells` | membership and per-animal contribution, so a group dominated by one animal is visible |
+| `manifest` | the membership request, cross-checked on load against the `.json` on disk |
+| `sourceFiles` | which per-animal files went in, with size and timestamp |
+| `timeVar`, `timeAxis` | the axis the traces share |
+| `createdBy`, `created` | script and git SHA, and when |
+
+The stamp is the direct answer to how CGC Groups C and D ended up built by two different script versions without anyone noticing: nothing recorded which recipe had produced a file. A group file without `groupInfo` is treated as legacy, not invalid.
+
+---
+
 ## Analysis workflow
 
 ### 0. Ad hoc FRA map during experiment — `adhocFRAmap.m`
