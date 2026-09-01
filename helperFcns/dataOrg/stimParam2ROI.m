@@ -47,12 +47,17 @@ function [pulseLegend2P,stimGroupIDX,outputTables] = stimParam2ROI(dataPath)
 %   Side-effect .mat files written (only for groups with >1 tif):
 %     <animal>_pulseLegend2P.mat
 %     <animal>_stimGroupIDX.mat
-%     <animal>_anmlROI_CGCstimTable.mat      (PTinContrast)
-%     <animal>_anmlROI_BPNstimTable_raw.mat  (BPN; _raw marks the
-%       pre-processBPN2P state. processBPN2P loads this, computes dFF
-%       and peak responses, then writes the processed bundle to
-%       <animal>_anmlROI_BPNstimTable.mat. Keeping the two artifacts
-%       distinct avoids re-run mutation of the raw table.)
+%     <animal>_anmlROI_CGCstimTable_raw.mat  (PTinContrast; see _raw note below)
+%     <animal>_anmlROI_BPNstimTable_raw.mat  (BPN; see _raw note below)
+%
+%   _raw two-stage convention (BPN and CGC): stimParam2ROI writes the _raw
+%   table; the matching process* script (processBPN2P / processCGC) loads it,
+%   computes dF/F and peak responses, and writes the processed bundle to the
+%   same name WITHOUT the _raw suffix. Keeping the two artifacts distinct
+%   means re-running a process* script never mutates its own input, and an
+%   animal that has not been processed yet has no processed file to aggregate
+%   silently. Downstream consumers (aggregateStimGroup, the group plotters)
+%   read the processed file.
 %     <animal>_anmlROI_SpontstimTable.mat    (spont)
 %     <animal>_anmlROI_dContrastTable.mat    (contrastChange)
 %
@@ -129,6 +134,12 @@ save(fullfile(dataPath,[animal '_stimGroupIDX.mat']),'stimGroupIDX','-v7.3')
 
 %sort pure tone in contrast stims
 if sum(stimGroupIDX.ptStimIDX.tifFileList)>1
+    % Isolate this family: a failure here must not abort the whole
+    % function and cost the families that follow. The Spont branch is
+    % known-fragile (tabular/unique on non-char cell columns), and it
+    % sits BEFORE dContrast, so an unguarded error there silently cost
+    % dContrast too. Each family reports and the rest continue.
+    try
 
     % Build a per-tif stim-parameter table for the PT-in-contrast group:
     % one row per tif, scalar columns for per-tif params and cell columns
@@ -148,13 +159,25 @@ if sum(stimGroupIDX.ptStimIDX.tifFileList)>1
     outputTables{end+1} = 'stimTable';
     outputTables{end+1} = stimTable;
     
-    save(fullfile(dataPath,[animal '_anmlROI_CGCstimTable.mat']),...
+    save(fullfile(dataPath,[animal '_anmlROI_CGCstimTable_raw.mat']),...
         'anmlROIbyStim','stimTable','tifStimParamTable',...
         'dataPath','-v7.3')
+    catch ME
+        warning('stimParam2ROI:familyFailed',...
+            ['%s stim family failed for %s: %s\n' ...
+             'Other stim families are unaffected; no %s table was written.'],...
+            'PTinContrast',animal,ME.message,'PTinContrast');
+    end
 end
 
 %BPN
 if sum(stimGroupIDX.BPNStimIDX.tifFileList)>1
+    % Isolate this family: a failure here must not abort the whole
+    % function and cost the families that follow. The Spont branch is
+    % known-fragile (tabular/unique on non-char cell columns), and it
+    % sits BEFORE dContrast, so an unguarded error there silently cost
+    % dContrast too. Each family reports and the rest continue.
+    try
 
     % Build a per-tif stim-parameter table for the BPN group: one row per
     % tif, scalar columns for per-tif params (trigDelay, ISI, totalPulses)
@@ -178,6 +201,12 @@ if sum(stimGroupIDX.BPNStimIDX.tifFileList)>1
     save(fullfile(dataPath,[animal '_anmlROI_BPNstimTable_raw.mat']),...
         'anmlROIbyStim','stimTable','tifStimParamTable',...
         'dataPath','-v7.3')
+    catch ME
+        warning('stimParam2ROI:familyFailed',...
+            ['%s stim family failed for %s: %s\n' ...
+             'Other stim families are unaffected; no %s table was written.'],...
+            'BPN',animal,ME.message,'BPN');
+    end
 end
 
 % SPONT
@@ -199,6 +228,12 @@ end
 %     Cell array input must be a cell array of character vectors.
 %%%
 if sum(stimGroupIDX.spontStimIDX.tifFileList)>1
+    % Isolate this family: a failure here must not abort the whole
+    % function and cost the families that follow. The Spont branch is
+    % known-fragile (tabular/unique on non-char cell columns), and it
+    % sits BEFORE dContrast, so an unguarded error there silently cost
+    % dContrast too. Each family reports and the rest continue.
+    try
 
     % Build a per-tif stim-parameter table for the Spont group: one row
     % per tif, scalar columns for per-tif params (trigDelay, ISI,
@@ -222,10 +257,22 @@ if sum(stimGroupIDX.spontStimIDX.tifFileList)>1
     save(fullfile(dataPath,[animal '_anmlROI_SpontstimTable.mat']),...
         'anmlROIbyStim','stimTable','tifStimParamTable',...
         'dataPath','-v7.3')
+    catch ME
+        warning('stimParam2ROI:familyFailed',...
+            ['%s stim family failed for %s: %s\n' ...
+             'Other stim families are unaffected; no %s table was written.'],...
+            'Spont',animal,ME.message,'Spont');
+    end
 end
 
 %sort contrast change stimulus
 if sum(stimGroupIDX.contrastChangeIDX.tifFileList)>1
+    % Isolate this family: a failure here must not abort the whole
+    % function and cost the families that follow. The Spont branch is
+    % known-fragile (tabular/unique on non-char cell columns), and it
+    % sits BEFORE dContrast, so an unguarded error there silently cost
+    % dContrast too. Each family reports and the rest continue.
+    try
 
     % Build a per-tif stim-parameter table for the contrast-change group:
     % one row per tif, scalar columns for per-tif params and cell columns
@@ -248,5 +295,11 @@ if sum(stimGroupIDX.contrastChangeIDX.tifFileList)>1
     save(fullfile(dataPath,[animal '_anmlROI_dContrastTable.mat']),'anmlROIdContrast','dContrastTable',...
         'dContrastTifParamTable','dataPath','tifFileList','fissaScaleFactor',...
         'stimGroupIDX','pulseLegend2P','-v7.3')
+    catch ME
+        warning('stimParam2ROI:familyFailed',...
+            ['%s stim family failed for %s: %s\n' ...
+             'Other stim families are unaffected; no %s table was written.'],...
+            'dContrast',animal,ME.message,'dContrast');
+    end
 end
 

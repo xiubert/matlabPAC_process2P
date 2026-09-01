@@ -5,6 +5,7 @@ clearvars;close all;clc;
 %%%%%%%%%%%%%%%%%%%%%%%%%%%  EDIT HERE  %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 cohortName = 'CaMKII';
+family     = 'CGC';   % stim family to compile: 'CGC' | 'BPN' | 'Spont' | 'dContrast'
 
 outputTableSaveDir = uigetdir(pwd,'Select folder to save output tables');
 if isequal(outputTableSaveDir,0)
@@ -22,6 +23,7 @@ params.pkPTsigSD = 2;
 params.nFramesPostPulse = 2;
 
 params.cohort = cohortName;
+params.family = family;
 params.colors.lohiPre = [0,0.451000000000000,0.741200000000000;0.851000000000000,0.329400000000000,0.102000000000000];
 params.colors.lohiPost = [0,0.302000000000000,0.490200000000000;0.588200000000000,0.231400000000000,0.078400000000000];
 params.colors.lohiTracePre = [0.729400000000000,0.874500000000000,1;1,0.694100000000000,0.541200000000000];
@@ -32,8 +34,11 @@ params.colors.ratio = [0.651000000000000,0.651000000000000,0.651000000000000;0.1
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 %% Compile FRA and stim/response data
+% compileAnmlROItables' signature is (family, params). This previously called
+% it as compileAnmlROItables(params), which threw
+% MATLAB:printf:invalidInputType from the unknown-family error path.
 [TfraAnml,TfraROI] = compileAnmlFRA(params);
-Tinput = compileAnmlROItables(params);
+Tinput = compileAnmlROItables(family,params);
 
 %isolate tone repsonsive cells
 TfraROI = TfraROI(TfraROI.dPrime>0,:);

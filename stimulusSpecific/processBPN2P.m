@@ -27,14 +27,31 @@
 if ~exist('dataPath','var')
     dataPath = uigetdir(pwd,'Select animal data folder');
     if isequal(dataPath,0)
-        error('No data folder selected.');
+        error('processBPN2P:noDataPath','No data folder selected.');
     end
-    animal = regexp(dataPath,'[A-Z]{2}\d{4}','match','once');
-    load(fullfile(dataPath,[animal '_anmlROI_BPNstimTable_raw.mat']))
 end
-if ~exist('animal','var')
+if ~exist('animal','var') || isempty(animal)
     animal = regexp(dataPath,'[A-Z]{2}\d{4}','match','once');
 end
+
+% Load unconditionally. Previously the load sat INSIDE the
+% "if ~exist('dataPath')" block, so setting dataPath in the workspace -- which
+% is exactly what processAnimalStimFamilies and any batch caller does -- meant
+% the table was never read and the script ran on whatever anmlROIbyStim
+% happened to be left over from a previous run.
+rawFile  = fullfile(dataPath,[animal '_anmlROI_BPNstimTable_raw.mat']);
+procFile = fullfile(dataPath,[animal '_anmlROI_BPNstimTable.mat']);
+if ~isfile(rawFile)
+    % No legacy fallback to the processed file here, unlike processCGC:
+    % combineDiffOnset below onset-aligns the raw F columns in place, so
+    % re-processing an already-processed table is not a clean no-op. Rebuild
+    % the _raw artifact instead.
+    error('processBPN2P:noRawInput', ...
+        ['%s not found in %s.\nRun stimParam2ROI for this animal first ' ...
+         '(processAnimal2P section 10) -- processBPN2P reads the _raw table.'], ...
+        [animal '_anmlROI_BPNstimTable_raw.mat'], dataPath);
+end
+load(rawFile)
 
 %% Parameters (EDIT IF NEEDED)
 baselineSec      = 1;   % pre-onset baseline (s) for dFF + onset alignment
@@ -80,8 +97,7 @@ anmlROIbyStim.sig     = resultsTable(:,2);
 anmlROIbyStim.pkResp  = resultsTable(:,3);
 
 %% Save processed bundle (fresh save; never touches the _raw input)
-save(fullfile(dataPath,[animal '_anmlROI_BPNstimTable.mat']), ...
-    'anmlROIbyStim','stimTable','tifStimParamTable','dataPath','-v7.3');
+save(procFile,'anmlROIbyStim','stimTable','tifStimParamTable','dataPath','-v7.3');
 
 %% --- Plot 1: single ROI, single dB, all reps + mean ---
 targetROI = '1';

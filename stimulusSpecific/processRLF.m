@@ -1,46 +1,50 @@
-% processRLF: response-level function across cells pooled from
-% multiple animals.
+% processRLF  Rate-level function and population dF/F for one BPN group.
 %
-% Loads each animal's anmlROIbyStim table, vertically concatenates them,
-% computes per-cell RLFs and dB thresholds (cells identified by
-% animal+roiID so collisions across animals are kept distinct), and plots
-% the cohort-mean RLF across included cells.
+% Entry point for BPN cohort plots. Select a BPN_Group<g>.mat (built by
+% aggregateStimGroup) and this produces the RLF, the population dF/F traces
+% per sound level, and peak dF/F per level -- each panel stating how many
+% cells and mice it summarises.
+%
+% Superseded the previous version's hardcoded list of per-animal
+% *_anmlROI_BPNstimTable.mat paths: assembling animals into a group is now
+% aggregateStimGroup's job (with a manifest and a provenance stamp), so this
+% script only plots. To build or rebuild a group file:
+%
+%   manifest = struct('group','D','family','BPN', ...
+%                     'animals',["TO0006","TO0007"], ...
+%                     'cohortRoot','/media/DATA/Ophys/Jinbo/TOMT', ...
+%                     'outDir','/media/DATA/Ophys/Jinbo/TOMT/aggregate data');
+%   aggregateStimGroup(manifest);
+%
+% Works for any group size, including a single animal.
+%
+% See also plotBPNgroup, aggregateStimGroup, loadStimGroup, tableRLF, plotRLF.
 
-addpath(genpath(fullfile(fileparts(mfilename('fullpath')),'helperFcns')));
+addpath(genpath(fullfile(fileparts(fileparts(mfilename('fullpath'))),'helperFcns')));
 
-%% params
-matFiles = {
-    '/media/DATA/Ophys/Jinbo/AA0067_anmlROI_BPNstimTable.mat'
-    % '/media/DATA/Ophys/Jinbo/AA####_anmlROI_BPNstimTable.mat'
-    % '/media/DATA/Ophys/Jinbo/AA####_anmlROI_BPNstimTable.mat'
-    };
-nConsec = 3;      % min consecutive sig==1 dB levels for inclusion
-dBlist  = [];     % [] -> use sort(unique(T.BPNdBAmpl))
+%% params (EDIT IF NEEDED)
+nConsec    = 2;        % min consecutive sig dB levels for RLF inclusion
+levels     = [];       % [] -> every level present in the group
+traceCells = 'all';    % 'all' | 'included' (RLF-included cells only)
 
-%% load & concatenate
-tables = cell(numel(matFiles),1);
-for i = 1:numel(matFiles)
-    S = load(matFiles{i},'anmlROIbyStim');
-    tables{i} = S.anmlROIbyStim;
+%% pick the group file
+if ~exist('groupFile','var') || isempty(groupFile)
+    [f,pth] = uigetfile({'BPN_Group*.mat','BPN group files'}, ...
+        'Select a BPN group file');
+    if isequal(f,0); error('processRLF:noFile','No group file selected.'); end
+    groupFile = fullfile(pth,f);
 end
-T = vertcat(tables{:});
-
-% sanity: report cells per animal
-[~,perAnml] = findgroups(T(:,'animal'));
-nCellPerAnml = splitapply(@(a,r) numel(unique(strcat(a,'_',r))),...
-    T.animal, T.roiID, findgroups(T.animal));
-fprintf('Loaded %d animals, %d total rows\n', numel(matFiles), height(T));
-for i = 1:height(perAnml)
-    fprintf('  %s: %d cells\n', perAnml.animal(i), nCellPerAnml(i));
-end
-
-%% compute
-rlf = tableRLF(T,'nConsec',nConsec,'dBlist',dBlist);
-
-fprintf('Included %d of %d cells (>=%d consecutive sig dB levels)\n',...
-    rlf.nIncluded, rlf.nTotal, nConsec);
-disp(rlf.cellInfo);
 
 %% plot
-figure('Color','w');
-plotRLF(rlf,'showCells',true);
+out = plotBPNgroup(groupFile, ...
+    'nConsec',nConsec, 'levels',levels, 'traceCells',traceCells);
+
+%% report
+fprintf('\n%s\n', groupFile);
+fprintf('  %s\n', out.N.label);
+disp(out.N.perAnimal);
+fprintf('  RLF: %d of %d cells included (>= %d consecutive significant levels)\n', ...
+    out.rlf.nIncluded, out.rlf.nTotal, out.rlf.nConsec);
+if out.N.singleAnimal
+    fprintf('  NOTE: single-animal group -- no across-animal inference.\n');
+end

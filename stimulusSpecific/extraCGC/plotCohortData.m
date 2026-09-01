@@ -1,10 +1,81 @@
-%plotCohortData
+% plotCohortData  Cohort-level CGC (pure-tone-in-contrast) figures.
+%
+%   Every section here is CGC-specific: dF/F referenced to the DRC baseline and
+%   then to the pre-tone baseline, peak PT responses, contrast comparisons,
+%   pre/post treatment and cell-type splits. Operates on the flat Tinput table
+%   built by compileCohortData, NOT on the per-animal processed tables.
+%
+%   dF/F CONVENTION (aligned 2026-09-01 with processCGC and
+%   matlabPAC_CGCplot/plotDataTable.m):
+%     dFF_DRC = (F - F0_DRC)/F0_DRC over tBaseDRC
+%     dFF_PT  = dFF_DRC - mean(dFF_DRC over tBasePT)   <- ADDITIVE, not a
+%               divisive re-normalisation off raw F
+%     peak    = pkFcalc on dFF_PT CROPPED to t >= tBasePT(1), so pkFcalc's
+%               baseline is the pre-tone window rather than the whole
+%               pre-tone period including the DRC onset transient
+%     window  = params.pkPTframeBin frames, everywhere in this file
+%
+%   See also compileCohortData, processCGC, plotCGCgroup, stimGroupSpec.
 
 %% LOAD DATA
-clearvars;close all;clc;
+% -except cohortDataFile so a caller can preset it and skip the prompt; a bare
+% clearvars would wipe it before the check below ever sees it.
+clearvars -except cohortDataFile;close all;clc;
 
-load('C:\Users\JIC402\OneDrive - University of Pittsburgh\Data\CaMKII_combined\CaMKII_dataTable.mat')
-load('C:\Users\JIC402\OneDrive - University of Pittsburgh\Data\CaMKII_combined\CaMKII_params.mat')
+% Inputs are compileCohortData's outputs: <cohortName>_dataTable.mat (holding
+% Tinput) and a matching <cohortName>_params.mat. Select the data table; the
+% params file is derived from the same prefix, so the two cannot be mismatched.
+% Set cohortDataFile in the workspace beforehand to skip the prompt.
+if ~exist('cohortDataFile','var') || isempty(cohortDataFile)
+    [f,pth] = uigetfile({'*_dataTable.mat','Cohort data table (*_dataTable.mat)'}, ...
+        'Select the cohort data table (output of compileCohortData)');
+    if isequal(f,0)
+        error('plotCohortData:noFile','No cohort data table selected.');
+    end
+    cohortDataFile = fullfile(pth,f);
+end
+if ~isfile(cohortDataFile)
+    error('plotCohortData:fileNotFound','Cohort data table not found: %s', cohortDataFile);
+end
+load(cohortDataFile,'Tinput')
+
+paramsFile = strrep(cohortDataFile,'_dataTable.mat','_params.mat');
+if isfile(paramsFile)
+    load(paramsFile,'params')
+else
+    warning('plotCohortData:noParams', ...
+        '%s not found; using defaults for every parameter.', paramsFile);
+    params = struct();
+end
+
+% Fill any field the sections below need but the params file does not carry.
+% Done per-field rather than all-or-nothing because params files saved by older
+% revisions of compileCohortData are missing fields added since -- the sample
+% CaMKII_params.mat has no permIters, for instance.
+[~,nm] = fileparts(cohortDataFile);
+defs = struct( ...
+    'cohort',           erase(nm,'_dataTable'), ...
+    'colors',           getContrastColors(), ...
+    'pkPTframeBin',     4, ...
+    'pkPTsigSD',        2, ...
+    'permIters',        100000);
+df = fieldnames(defs);
+missing = df(~isfield(params,df));
+for k = 1:numel(missing)
+    params.(missing{k}) = defs.(missing{k});
+end
+if ~isempty(missing)
+    fprintf('plotCohortData: filled default param(s): %s\n', strjoin(missing',', '));
+end
+
+% Where figSaveAsFigEpsPng writes when a section has figSave = true. Defaults
+% to the folder the data table came from.
+if ~isfield(params,'figSaveDir') || isempty(params.figSaveDir)
+    params.figSaveDir = fileparts(cohortDataFile);
+end
+
+fprintf('plotCohortData: %s | %d rows | figures -> %s\n', ...
+    params.cohort, height(Tinput), params.figSaveDir);
 
 %% dFF
 % %{
@@ -30,23 +101,34 @@ Tinput.t_dFF_DRC = rowfun(@(t) ...
     Tinput,'InputVariables',{'t_F'},...
     'ExtractCellContents',true,'OutputFormat','uniform');
 
-%dFF re PT
-Tinput.dFF_PT = rowfun(@(F,t,PTonset) ...
-    {dFoFcalc(F,[find((t>=tBasePT{round(PTonset)}(1) & t<=tBasePT{round(PTonset)}(2)),1,'first')...
-    find((t>=tBasePT{round(PTonset)}(1) & t<=tBasePT{round(PTonset)}(2)),1,'last')],1)},...
-    Tinput,'InputVariables',{'F','t_F','PTsOnset'},...
+%dFF re PT -- ADDITIVE second baseline subtraction on the existing dF/F,
+% matching processCGC and matlabPAC_CGCplot/plotDataTable.m (and the
+% manuscript). This file previously used dFoFcalc(F,...), a DIVISIVE
+% (F-F0_PT)/F0_PT off RAW F, which is a different quantity and made results
+% here non-comparable with the per-animal tables and the group files.
+% Input is dFF_DRC, so the result shares the t_dFF_DRC axis.
+Tinput.dFF_PT = rowfun(@(dFF_DRC,t,PTonset) ...
+    {dFF_DRC - mean(dFF_DRC(:,t>=tBasePT{round(PTonset)}(1) & ...
+                             t<=tBasePT{round(PTonset)}(2)),2,'omitnan')},...
+    Tinput,'InputVariables',{'dFF_DRC','t_dFF_DRC','PTsOnset'},...
     'ExtractCellContents',true,'OutputFormat','uniform');
-Tinput.t_dFF_PT = rowfun(@(t,PTonset) ...
-    {t(find((t>=tBasePT{round(PTonset)}(1) & t<=tBasePT{round(PTonset)}(2)),1,'first'):end)},...
-    Tinput,'InputVariables',{'t_F','PTsOnset'},...
-    'ExtractCellContents',true,'OutputFormat','uniform');
+% Same axis as dFF_DRC now (the additive form does not trim). Kept as its own
+% column so the trace sections below keep working unchanged.
+Tinput.t_dFF_PT = Tinput.t_dFF_DRC;
 
 % %peak dFF @PT (sig)
-tmp = rowfun(@(dFF_PT,t_dFF_PT,PTonset,fr) ...
-    pkFcalc(dFF_PT,...
-    find(t_dFF_PT>=(PTonset+(1/fr)),1,'first'),...
-    params.nFramesPostPulse,params.pkPTsigSD),...
-    Tinput,'InputVariables',{'dFF_PT','t_dFF_PT','PTsOnset','frameRate'},...
+% Crop to the F0_PT window before pkFcalc, as processCGC does. pkFcalc takes
+% frames 1:frameStart as its significance baseline, so cropping first is what
+% makes that baseline the pre-tone window; passing the full trace would put the
+% DRC onset transient in the baseline and inflate its SD. Window length is
+% params.pkPTframeBin everywhere (this section previously used
+% params.nFramesPostPulse, a different value, while the section below used
+% pkPTframeBin).
+tmp = rowfun(@(dFF_PT,t,PTonset) ...
+    pkFcalc(dFF_PT(:, t>=tBasePT{round(PTonset)}(1)),...
+    find(t(t>=tBasePT{round(PTonset)}(1))>=PTonset,1,'first'),...
+    params.pkPTframeBin,params.pkPTsigSD),...
+    Tinput,'InputVariables',{'dFF_PT','t_dFF_PT','PTsOnset'},...
     'ExtractCellContents',true,'OutputFormat','cell','OutputVariableNames',{'pk','sigPk','sig'});
 Tinput.pkPT_sig = tmp(:,1);
 Tinput.sigPk = tmp(:,2);
@@ -108,7 +190,7 @@ ylabelLowHighPkRespRatio(params.colors);
 xticklabels(string(unique(Tplot.PTsOnset)))
 xlabel('DRC duration preceding pure tone (s)')
 if figSave
-    figSaveAsFigEpsPng(gcf);
+    figSaveAsFigEpsPng(gcf,params.figSaveDir);
 end
 
 %}
@@ -208,7 +290,7 @@ if plotBoxplot==0
     ax = gca;
     ax.YAxis.TickLength = [0 0];
     if figSave
-        figSaveAsFigEpsPng(gcf);
+        figSaveAsFigEpsPng(gcf,params.figSaveDir);
     end
     
 end
@@ -342,7 +424,7 @@ ylabel({'high contrast','peak % \DeltaF/F'},...
     'Color',params.colors.lohiPre(2,:),'interpreter', 'tex')
 legend('off')
 if figSave
-    figSaveAsFigEpsPng(gcf);
+    figSaveAsFigEpsPng(gcf,params.figSaveDir);
 end
 
 mCI = mdl.coefCI;
@@ -380,7 +462,7 @@ modPlotForPaper()
 xlabel('time (s)')
 ylabel('% \DeltaF/F')
 if figSave
-    figSaveAsFigEpsPng(gcf);
+    figSaveAsFigEpsPng(gcf,params.figSaveDir);
 end
 %}
 
@@ -441,7 +523,7 @@ set(gca,'xtick',1:length(BW),...
         'xticklabel',BW)
 ylabelLowHighPkRespRatio(params.colors);
 if figSave
-    figSaveAsFigEpsPng(gcf);
+    figSaveAsFigEpsPng(gcf,params.figSaveDir);
 end
 
 %ratio re PT/BF  within / outside octave
@@ -490,7 +572,7 @@ set(gca,'xtick',1:2,...
         'xticklabel',{'within','outside'})
 ylabelLowHighPkRespRatio(params.colors);
 if figSave
-    figSaveAsFigEpsPng(gcf);
+    figSaveAsFigEpsPng(gcf,params.figSaveDir);
 end
 
 
@@ -584,7 +666,7 @@ if plotBoxplot~=1
     ax = gca;
     ax.YAxis.TickLength = [0 0];
     if figSave
-        figSaveAsFigEpsPng(gcf);
+        figSaveAsFigEpsPng(gcf,params.figSaveDir);
     end
 end
 
@@ -725,7 +807,7 @@ text(2+(-1.*(b(1).XOffset)),2.5,strrep(prepost{1},'pre',''),...
     'Rotation',90,'Color','w','FontWeight','bold','FontSize',16)
 set(gca,'Position',[0.2000 0.100 0.6000 0.7150])
 if figSave
-    figSaveAsFigEpsPng(gcf);
+    figSaveAsFigEpsPng(gcf,params.figSaveDir);
 end
 
 %low/high pre and post
@@ -777,7 +859,7 @@ for ppID = 1:length(pp)
     end
     
     if figSave
-        figSaveAsFigEpsPng(gcf);
+        figSaveAsFigEpsPng(gcf,params.figSaveDir);
     end
     
     mCI = mdl.coefCI;
@@ -818,7 +900,7 @@ for cID = 1:length(lh)
         'Color',params.colors.lohiPost(cID,:),...
         'FontWeight','bold','interpreter', 'tex');
     if figSave
-        figSaveAsFigEpsPng(gcf);
+        figSaveAsFigEpsPng(gcf,params.figSaveDir);
     end
     fprintf('%s: pre/post n = %d\n',lh{cID},sum(all(~isnan([pre post]),2)))
     [~,~,normBool] = sigDiffCalc(pre,post);
@@ -864,7 +946,7 @@ modPlotForPaper(true)
 hLabel = ylabelLowHighPkRespRatio(params.colors);
 xticklabels('')
 if figSave
-    figSaveAsFigEpsPng(gcf);
+    figSaveAsFigEpsPng(gcf,params.figSaveDir);
 end
 
 fprintf('ratio n = %d \n',sum(all(~isnan(horzcat(pkRespT.pkRatio{:})),2)))
@@ -920,7 +1002,7 @@ xlabel('time (s)')
 ylabel('% \DeltaF/F')
 end
 if figSave
-    figSaveAsFigEpsPng(gcf);
+    figSaveAsFigEpsPng(gcf,params.figSaveDir);
 end
 
 
@@ -1001,7 +1083,7 @@ set(gca,'yticklabel',[]);
 modPlotForPaper();
 xlabel('time (s)');
 if figSave
-    figSaveAsFigEpsPng(gcf);
+    figSaveAsFigEpsPng(gcf,params.figSaveDir);
 end
 
 %over epoch
@@ -1048,7 +1130,7 @@ set(gca,'xtick',1:2,...
     ['\color[rgb]{' highStr '} HIGH']})
 set(gcf,'Position',[150 244.5000 369 420])
 if figSave
-    figSaveAsFigEpsPng(gcf);
+    figSaveAsFigEpsPng(gcf,params.figSaveDir);
 end
 
 
@@ -1134,7 +1216,7 @@ xlim([9 14])
 xlabel('time (s)')
 set(gcf,'Position',[287 302.5000 674 455])
 if figSave
-    figSaveAsFigEpsPng(gcf);
+    figSaveAsFigEpsPng(gcf,params.figSaveDir);
 end
 
 % 11.6-12 scatter
@@ -1177,7 +1259,7 @@ set(gca,'xtick',1:2,...
     ['\color[rgb]{' highStr '} HIGH']})
 set(gcf,'Position',[150 244.5000 369 420])
 if figSave
-    figSaveAsFigEpsPng(gcf);
+    figSaveAsFigEpsPng(gcf,params.figSaveDir);
 end
 
 %}
@@ -1213,24 +1295,35 @@ Tinput.t_dFF_DRC = rowfun(@(t) ...
     Tinput,'InputVariables',{'t_F'},...
     'ExtractCellContents',true,'OutputFormat','uniform');
 
-%dFF re PT
-Tinput.dFF_PT = rowfun(@(F,t,PTonset) ...
-    {dFoFcalc(F,[find((t>=tBasePT{round(PTonset)}(1) & t<=tBasePT{round(PTonset)}(2)),1,'first')...
-    find((t>=tBasePT{round(PTonset)}(1) & t<=tBasePT{round(PTonset)}(2)),1,'last')],1)},...
-    Tinput,'InputVariables',{'F','t_F','PTsOnset'},...
+%dFF re PT -- ADDITIVE second baseline subtraction on the existing dF/F,
+% matching processCGC and matlabPAC_CGCplot/plotDataTable.m (and the
+% manuscript). This file previously used dFoFcalc(F,...), a DIVISIVE
+% (F-F0_PT)/F0_PT off RAW F, which is a different quantity and made results
+% here non-comparable with the per-animal tables and the group files.
+% Input is dFF_DRC, so the result shares the t_dFF_DRC axis.
+Tinput.dFF_PT = rowfun(@(dFF_DRC,t,PTonset) ...
+    {dFF_DRC - mean(dFF_DRC(:,t>=tBasePT{round(PTonset)}(1) & ...
+                             t<=tBasePT{round(PTonset)}(2)),2,'omitnan')},...
+    Tinput,'InputVariables',{'dFF_DRC','t_dFF_DRC','PTsOnset'},...
     'ExtractCellContents',true,'OutputFormat','uniform');
-Tinput.t_dFF_PT = rowfun(@(t,PTonset) ...
-    {t(find((t>=tBasePT{round(PTonset)}(1) & t<=tBasePT{round(PTonset)}(2)),1,'first'):end)},...
-    Tinput,'InputVariables',{'t_F','PTsOnset'},...
-    'ExtractCellContents',true,'OutputFormat','uniform');
+% Same axis as dFF_DRC now (the additive form does not trim). Kept as its own
+% column so the trace sections below keep working unchanged.
+Tinput.t_dFF_PT = Tinput.t_dFF_DRC;
 
 % %peak dFF @PT (sig)
 %looks 0.2 s after PT onset, consider 3 frames instead
-tmp = rowfun(@(dFF_PT,t_dFF_PT,PTonset,fr) ...
-    pkFcalc(dFF_PT,...
-    find(t_dFF_PT>=(PTonset+(1/fr)),1,'first'),...
+% Crop to the F0_PT window before pkFcalc, as processCGC does. pkFcalc takes
+% frames 1:frameStart as its significance baseline, so cropping first is what
+% makes that baseline the pre-tone window; passing the full trace would put the
+% DRC onset transient in the baseline and inflate its SD. Window length is
+% params.pkPTframeBin everywhere (this section previously used
+% params.nFramesPostPulse, a different value, while the section below used
+% pkPTframeBin).
+tmp = rowfun(@(dFF_PT,t,PTonset) ...
+    pkFcalc(dFF_PT(:, t>=tBasePT{round(PTonset)}(1)),...
+    find(t(t>=tBasePT{round(PTonset)}(1))>=PTonset,1,'first'),...
     params.pkPTframeBin,params.pkPTsigSD),...
-    Tinput,'InputVariables',{'dFF_PT','t_dFF_PT','PTsOnset','frameRate'},...
+    Tinput,'InputVariables',{'dFF_PT','t_dFF_PT','PTsOnset'},...
     'ExtractCellContents',true,'OutputFormat','cell','OutputVariableNames',{'pk','sigPk','sig'});
 Tinput.pkPT_sig = tmp(:,1);
 Tinput.sigPk = tmp(:,2);
@@ -1276,7 +1369,7 @@ modPlotForPaper(true)
 hLabel = ylabelLowHighPkRespRatio(params.colors);
 xticklabels('')
 if figSave
-    figSaveAsFigEpsPng(gcf);
+    figSaveAsFigEpsPng(gcf,params.figSaveDir);
 end
 
 fprintf('ratio n = %d \n',sum(all(~isnan(horzcat(pkRespT.pkRatio{:})),2)))
@@ -1318,7 +1411,7 @@ end
 hL = legend('mean','SEM');
 hL.Box = 'off';
 if figSave
-    figSaveAsFigEpsPng(gcf);
+    figSaveAsFigEpsPng(gcf,params.figSaveDir);
 end
 
 if adtest(dBF)
@@ -1382,7 +1475,7 @@ modPlotForPaper(true)
 hLabel = ylabelLowHighPkRespRatio(params.colors);
 xticklabels('')
 if figSave
-    figSaveAsFigEpsPng(gcf);
+    figSaveAsFigEpsPng(gcf,params.figSaveDir);
 end
 
 fprintf('ratio n = %d \n',sum(all(~isnan(horzcat(pkRespT.pkRatio{:})),2)))
@@ -1453,7 +1546,7 @@ ylabel({'high contrast','peak % \DeltaF/F'},...
     strjoin({'pre','post'},'|'),'match'),'p','P')],''))(2,:),'interpreter', 'tex')
 legend('off')
 if figSave
-    figSaveAsFigEpsPng(gcf);
+    figSaveAsFigEpsPng(gcf,params.figSaveDir);
 end
 fprintf('lo>hi %d | hi>lo %d | total %d \n',...
     sum((lo>hi)),sum((hi>lo)),sum(all(~isnan([lo hi]),2)));
@@ -1504,7 +1597,7 @@ modPlotForPaper()
 xlabel('time (s)')
 ylabel('% \DeltaF/F')
 if figSave
-    figSaveAsFigEpsPng(gcf);
+    figSaveAsFigEpsPng(gcf,params.figSaveDir);
 end
 
 %}
@@ -1596,7 +1689,7 @@ if plotBoxplot ~= 1
     ax = gca;
     ax.YAxis.TickLength = [0 0];
     if figSave
-        figSaveAsFigEpsPng(gcf);
+        figSaveAsFigEpsPng(gcf,params.figSaveDir);
     end
 end
 
@@ -1644,7 +1737,7 @@ if plotBoxplot == 1
         ['\color[rgb]{' highStr '} HIGH']})
     set(gcf,'Position',[150 244.5000 369 420])
     if figSave
-        figSaveAsFigEpsPng(gcf);
+        figSaveAsFigEpsPng(gcf,params.figSaveDir);
     end
 end
 
