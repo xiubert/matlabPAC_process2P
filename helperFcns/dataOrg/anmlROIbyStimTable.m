@@ -217,6 +217,16 @@ for nStim = 2:size(stimTable,1)
 end
 TanmlROI = [addvars(TanmlROI,stimID) roiTstim];
 
+% ---- movement-rejection tunables (multi-pulse groups only) ----------
+% Criteria are evaluated per stimulus epoch against that epoch's own
+% pre-onset baseline (criterion 1) and against the preceding epoch's
+% baseline (criterion 2). See 'Movement rejection' in the header.
+baselineSec = 1;    % s of pre-onset baseline used per epoch
+respSkipSec = 0.2;  % s skipped after onset before the response window opens
+nSD         = 3;    % SD multiplier for both criteria
+% mean of every run of 3 consecutive frames
+rollMean3   = @(v) (v(1:end-2) + v(2:end-1) + v(3:end)) / 3;
+
 %get roiF data by tif file
 tifRawF = {};
 tifMoCorRawF = {};
@@ -236,24 +246,57 @@ for i = 1:length(tifFileListStim)
         if FISSA
             tifFissaFroi = [tifFissaFroi,mat2cell(tifFileListStim(i).fissaFroi(:,framesPreTrig+1:framesPreTrig+framesPerPulse*totalPulse),length(moCorROI),repmat(framesPerPulse,1,totalPulse))'];
             tmptifSCALEDfissaFroi = mat2cell(tifFileListStim(i).SCALEDfissaFroi(:,framesPreTrig+1:framesPreTrig+framesPerPulse*totalPulse),length(moCorROI),repmat(framesPerPulse,1,totalPulse))';
+            % ---------- movement / dropout rejection (excludeNeg) ----------
+            % Screened here, while epochs are still in acquisition order
+            % within their tif: criterion 2 needs each epoch's immediate
+            % predecessor, and that adjacency is destroyed by the
+            % pivot-by-stimID further down.
             if excludeNeg
-                tmpavgtifSCALEDfissaFroi=cellfun(@(x) mean(x,1), tmptifSCALEDfissaFroi, 'UniformOutput', false);
-                for j=1:size(tifSCALEDfissaFroi,1)-1
-                    onset=tifStimParamTable.BPNsOnset{1,1}{j,1}; %TODO: BPN -> agnostic to stim type for other traces w/ multiple stim epochs eg. regex for sOnset
-                    tmpbase=tmpavgtifSCALEDfissaFroi{j,1}((onset-1)*frameRate+1:onset*frameRate);
-                    tmpmeanbase=mean(tmpbase,2);
-                    tmpsdbase=std(tmpbase,0,2);
-                    tmpresp=tmpavgtifSCALEDfissaFroi{j,1}((onset+0.2)*frameRate+1:framesPerPulse); %(onset+3.8)*frameRate);
-                    tmpmaxresp=max(tmpresp);
-                    consecutiveavg=(tmpresp(1:end-2) + tmpresp(2:end-1) + tmpresp(3:end)) / 3;
-                    if any(consecutiveavg<tmpmeanbase-3*tmpsdbase)|| (tmpmaxresp<tmpmeanbase)
-                        tmptifSCALEDfissaFroi{j,1}(:)=NaN;
-                    end
-                    tmpnextbase=tmpavgtifSCALEDfissaFroi{j+1,1}((onset-1)*frameRate+1:onset*frameRate);
-                    consecutiveavgnextbase=(tmpnextbase(1:end-2) + tmpnextbase(2:end-1) + tmpnextbase(3:end)) / 3;
-                    if any(consecutiveavgnextbase<tmpmeanbase-3*tmpsdbase)
-                        tmptifSCALEDfissaFroi{j+1,1}(:)=NaN;
-                    end
+                % Movement shifts the whole field of view, so each verdict
+                % is made once per epoch on the across-ROI mean trace
+                % (dim 1 = ROI) and a failing epoch is blanked for all ROIs.
+                epochAvg = cellfun(@(x) mean(x,1), tmptifSCALEDfissaFroi, ...
+                    'UniformOutput', false);
+                %TODO: BPN -> agnostic to stim type for other traces w/ multiple stim epochs eg. regex for sOnset
+                onsets = cell2mat(tifStimParamTable.BPNsOnset{1,1});
+
+                % Pass 1: per-epoch baseline statistics and criterion 1.
+                % Every statistic is read from the unmodified traces, so
+                % blanking one epoch can never alter another's verdict.
+                [baseMean,baseSD] = deal(nan(totalPulse,1));
+                baseRoll3 = cell(totalPulse,1);
+                failC1 = false(totalPulse,1);
+                for j = 1:totalPulse
+                    baseIDX = (onsets(j)-baselineSec)*frameRate+1 : onsets(j)*frameRate;
+                    base = epochAvg{j,1}(baseIDX);
+                    baseMean(j)  = mean(base,2);
+                    baseSD(j)    = std(base,0,2);
+                    baseRoll3{j} = rollMean3(base);
+
+                    resp = epochAvg{j,1}((onsets(j)+respSkipSec)*frameRate+1:framesPerPulse);
+
+                    % C1a: some run of 3 consecutive response frames averages
+                    %      more than nSD below this epoch's own baseline
+                    %      (fluorescence dropout - cell left the plane), OR
+                    % C1b: the response never reaches its own baseline mean.
+                    failC1(j) = any(rollMean3(resp) < baseMean(j)-nSD*baseSD(j)) ...
+                        || max(resp) < baseMean(j);
+                end
+
+                % Pass 2, criterion 2: this epoch's baseline sits more than
+                % nSD below the PREVIOUS epoch's baseline. Epoch 1 has no
+                % predecessor, and separate tifs are separate recordings, so
+                % the chain never crosses a tif boundary.
+                failC2 = false(totalPulse,1);
+                for j = 2:totalPulse
+                    failC2(j) = any(baseRoll3{j} < baseMean(j-1)-nSD*baseSD(j-1));
+                end
+
+                % Blank each rejected epoch across all ROIs. Epochs are kept
+                % as all-NaN rows rather than dropped so rep indexing stays
+                % aligned with stimTable; pkFcalc/SEMcalc are NaN-aware.
+                for j = find(failC1 | failC2)'
+                    tmptifSCALEDfissaFroi{j,1}(:) = NaN;
                 end
             end
             tifSCALEDfissaFroi = [tifSCALEDfissaFroi,tmptifSCALEDfissaFroi];
