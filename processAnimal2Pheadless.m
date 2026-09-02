@@ -24,6 +24,8 @@ function out = processAnimal2Pheadless(dataPath,varargin)
 %      9  FISSA parsing + neuropil scaling         -> _tifFileList.mat
 %     10  stimulus alignment                       -> _anmlROI_<Fam>*_raw.mat
 %     11  per-family dF/F + peak responses         -> _anmlROI_<Fam>*.mat
+%         (including FRA, which has no _raw stage and is driven straight
+%          from the tif inventory)
 %   (5 is folded into 4, as saving is not a separate step here.)
 %
 %   Each stage is skipped when its artefact already exists unless
@@ -634,19 +636,11 @@ r = struct();
 end
 
 % ========================================================================
-function r = stage10(cfg,F)
+function r = stage10(cfg,~)
+%FRA is not handled here: it has no _raw stage, and processAnimalStimFamilies
+%(stage 11) drives it straight from the tif inventory along with every other
+%family.
 [~,~,~] = stimParam2ROI(cfg.dataPath);
-if cfg.runFRAmap
-    S = load(F.tifFileList,'tifFileList');
-    if isfield(S.tifFileList,'map') && ~isempty(S.tifFileList.map)
-        try
-            runFRA(cfg.dataPath,'showPlots',false);
-        catch ME
-            warning('processAnimal2Pheadless:FRAfailed',...
-                'processFRA failed (%s); the other families are unaffected.',ME.message);
-        end
-    end
-end
 r = struct();
 end
 
@@ -655,8 +649,12 @@ function r = stage11(cfg,~)
 if ~cfg.runStimFamilies
     r = struct(); return
 end
-stim = processAnimalStimFamilies(cfg.dataPath,'showPlots',false,...
-    'scriptVars',cfg.stimScriptVars,'verbose',cfg.verbose);
+args = {'showPlots',false,'scriptVars',cfg.stimScriptVars,'verbose',cfg.verbose};
+if ~cfg.runFRAmap
+    fams = stimGroupSpec();
+    args = [args,{'families',fams(~strcmp(fams,'FRA'))}];
+end
+stim = processAnimalStimFamilies(cfg.dataPath,args{:});
 r = struct('stim',stim);
 end
 

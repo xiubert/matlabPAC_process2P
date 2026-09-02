@@ -62,8 +62,10 @@ function cfg = headlessConfig(dataPath,varargin)
 %
 %   Name-value -- per-stim analysis (§10-11)
 %     'runStimFamilies'  Default true.
-%     'runFRAmap'        run processFRA when the animal has map tifs.
-%                        Default true.
+%     'runFRAmap'        include the FRA family in stage 11. FRA has no _raw
+%                        stage, so processAnimalStimFamilies drives it from
+%                        the tif inventory whenever the animal has map tifs.
+%                        Default true; false excludes FRA from that run.
 %     'stimScriptVars'   struct forwarded to processAnimalStimFamilies.
 %
 %   Name-value -- control

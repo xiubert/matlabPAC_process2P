@@ -4,13 +4,16 @@ function FRAout = runFRA(dataPath,opts)
 %   FRAout = runFRA(dataPath)
 %   FRAout = runFRA(dataPath,'pkPTsigSD',2,'showPlots',false)
 %
-%   The headless counterpart to the processFRA script. processFRA resolves
-%   dataPath through uigetdir and plots as it goes, and it cannot be driven
-%   by processAnimalStimFamilies -- FRA is registered in stimGroupSpec with an
-%   empty suffixRaw, so that dispatcher's isfile gate can never fire. This
-%   does the same work as a function: load the animal's tifFileList, call
-%   FRAmap, save <animal>_FRAmap.mat, and (optionally) the per-animal table
-%   FRAmap2table writes next to it.
+%   A function-shaped way to run one animal's FRA: load its tifFileList, call
+%   FRAmap, save <animal>_FRAmap.mat, and write the per-animal table via
+%   FRAmap2table. The analysis is identical to the processFRA script; this
+%   just takes arguments and returns a value instead of reading the caller's
+%   workspace and plotting.
+%
+%   For a whole-animal run you normally do NOT need this:
+%   processAnimalStimFamilies drives FRA along with every other family, and
+%   processAnimal2Pheadless stage 11 goes through that. Use runFRA to
+%   (re)compute FRA on its own, e.g. with a different pkPTsigSD.
 %
 %   The analysis is unchanged from processFRA: significance is tested once
 %   per (ROI, freq, dB) on the trial-averaged onset-aligned trace against a
@@ -27,8 +30,8 @@ function FRAout = runFRA(dataPath,opts)
 %     'FsourceString'    trace field to use. Default 'SCALEDfissaFroi'.
 %     'showPlots'        draw plotFRAmap. Default false.
 %     'writeTable'       also write <animal>_anmlROI_FRAtable.mat via
-%                        FRAmap2table, when that function is on the path (it
-%                        lives on the refactorFRA branch). Default true.
+%                        FRAmap2table -- the file aggregateStimGroup reads.
+%                        Default true.
 %     'overwrite'        redo when <animal>_FRAmap.mat exists. Default true.
 %
 %   Output
@@ -93,12 +96,11 @@ fprintf('runFRA: wrote %s (%d cells)\n',outFile,size(FRAout.uSigPkResp,1));
 if opts.writeTable
     if exist('FRAmap2table','file') ~= 2
         warning('runFRA:noTableFcn',...
-            ['FRAmap2table is not on the path (it lives on the refactorFRA '...
-             'branch), so no per-animal FRA table was written. The '...
-             '_FRAmap.mat is complete.']);
+            ['FRAmap2table is not on the path, so no per-animal FRA table '...
+             'was written. The _FRAmap.mat is complete.']);
     else
         try
-            T = FRAmap2table(FRAout); %#ok<NASGU>
+            T = FRAmap2table(FRAout,animal); %#ok<NASGU>
             tblFile = fullfile(dataPath,[animal '_anmlROI_FRAtable.mat']);
             save(tblFile,'T','dataPath','-v7.3');
             fprintf('runFRA: wrote %s\n',tblFile);

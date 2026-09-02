@@ -33,10 +33,11 @@ function out = cellposeROIset(dataPath,animal,tifList,tifFiles,opts)
 %
 %   Name-value -- what to segment
 %     'mode'          'consensus' (default) | 'sessionMean'
-%     'minVotes'      consensus only. <= 1 is a FRACTION of the tif count,
-%                     > 1 an absolute count. Default 2 (absolute): a cell must
-%                     appear in at least two tifs. A strict inner join over
-%                     every tif yields nothing, because the worst tif governs.
+%     'minVotes'      consensus only. Below 1 it is a FRACTION of the tif
+%                     count; 1 or more an absolute count. Default 2: a cell
+%                     must appear in at least two tifs. A strict inner join
+%                     over every tif yields nothing, because the worst tif
+%                     governs.
 %     'conds'         restrict to these conditions. Default: all in tifList.
 %     'tifMeans'      struct of precomputed per-tif means (one cell array per
 %                     condition), to skip re-reading NoRMCorred/. Optional.

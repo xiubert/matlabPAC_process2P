@@ -21,7 +21,8 @@ function [roiOut,info] = consensusROIsets(roiSets,opts)
 %   The vote threshold spans the obvious combining rules: minVotes = 1 is the
 %   union, minVotes = numel(roiSets) is the strict inner join, and the useful
 %   settings are in between -- a strict join is dominated by the worst tif,
-%   which may have found almost nothing.
+%   which may have found almost nothing. On TO0003 the strict join over 29
+%   tifs keeps no cells at all.
 %
 %   Inputs
 %     roiSets  cell array of moCorROI struct arrays (from labelImg2moCorROI),
@@ -30,8 +31,11 @@ function [roiOut,info] = consensusROIsets(roiSets,opts)
 %
 %   Name-value
 %     'minVotes'      how many sets must detect a cell to keep it. A value
-%                     <= 1 is read as a FRACTION of the number of sets
-%                     (default 0.5); > 1 as an absolute count.
+%                     strictly below 1 is read as a FRACTION of the number of
+%                     sets; 1 or more is an absolute count, so minVotes = 1
+%                     is the union and minVotes = numel(roiSets) the strict
+%                     inner join. Default 0.5. A count above the number of
+%                     sets is an error, not a silent clamp.
 %     'iouThreshold'  overlap needed to call two ROIs the same cell.
 %                     Default 0.3.
 %     'maskQuantile'  a consensus cell's mask is the pixels claimed by at
@@ -83,10 +87,19 @@ for s = 1:nSets
     end
 end
 
-if opts.minVotes <= 1
+%strictly below 1 is a fraction of the sets; 1 or more is a count. Reading
+%1 as "the whole fraction" would make minVotes=1 mean the strict inner join
+%rather than the union, which is the opposite of what it looks like.
+if opts.minVotes < 1
     minVotes = max(1,round(opts.minVotes*nSets));
 else
     minVotes = round(opts.minVotes);
+end
+if minVotes > nSets
+    %silently clamping would turn a typo into a strict inner join and report
+    %it as a normal result
+    error('consensusROIsets:minVotesTooHigh',...
+        'minVotes = %d but there are only %d ROI sets to vote.',minVotes,nSets);
 end
 
 %--- cluster ROIs across sets by overlap ----------------------------------
