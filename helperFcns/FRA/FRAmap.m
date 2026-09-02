@@ -32,13 +32,22 @@ FsourceString = p.Results.FsourceString;
 tifDir = tifFileList.map(1).folder;
 [PTfreq,PTdBampl,PTonsetInPulse,msPTpulseLen,paramS] = deal(cell(length(tifFileList.map),1));
 for nTif = 1:length(tifFileList.map)
+    pulseFile = strrep(tifFileList.map(nTif).name,'.tif','_Pulses.mat');
     try
-        S = load(fullfile(tifDir,strrep(tifFileList.map(nTif).name,'.tif','_Pulses.mat')));
+        S = load(fullfile(tifDir,pulseFile));
     catch
+        %prompting is only possible in an interactive session; under -batch
+        %the dialog throws an opaque error, so fail with the missing path
+        if ~usejava('desktop')
+            error(['Cannot find pulse file:\n  %s\n' ...
+                'tifFileList.map(1).folder may be stale (e.g. a path from ' ...
+                'another machine). Set it to the folder holding the map ' ...
+                'tifs and their _Pulses.mat files.'],fullfile(tifDir,pulseFile));
+        end
         disp('Can''t find pulses associated with .tifs, locate dir...')
-        tifDir = uigetdir('D:\Data',...
+        tifDir = uigetdir(pwd,...
             'Locate directory containing TRF map tifs...');
-        S = load(fullfile(tifDir,strrep(tifFileList.map(nTif).name,'.tif','_Pulses.mat')));
+        S = load(fullfile(tifDir,pulseFile));
     end
     
     if isfield(S.params, 'pulseFrameNo')
@@ -74,12 +83,25 @@ end
 %% calculate dFF + peak dFF for each trace for each cell
 nPulsePerFile = length(PTfreq)/length(tifFileList.map);
 nCell = size(tifFileList.map(1).(FsourceString),1);
-fs = unique(extractfield(tifFileList.map,'frameRate'));
-if floor(fs)~=fs
-    fs = round(fs);
+%round BEFORE unique: rates differing only by float noise must collapse to
+%one value, else framesPerPulse below becomes non-scalar and every frame
+%index downstream is silently wrong
+frameRates = extractfield(tifFileList.map,'frameRate');
+fs = unique(round(frameRates));
+if ~isscalar(fs)
+    error('frame rates differ between map tifs: %s',mat2str(unique(frameRates)))
 end
 framesPerPulse = param.ISI*fs;
-PTonsetIDX = PTonsetInPulse*fs;
+
+%PT onset frame: frame k spans t = (k-1)/fs, so the first frame at or after
+%onset is find(t>=onset), NOT onset*fs (which lands one frame early).
+%Matches the idiom used by processBPN2P / processCGC.
+tLocalPulse = (0:framesPerPulse-1)/fs;
+PTonsetIDX = arrayfun(@(o) find(tLocalPulse >= o - 1e-9,1,'first'),PTonsetInPulse);
+if isempty(PTonsetIDX) || min(PTonsetIDX) < 3
+    error(['PT onset lands at frame %d; need >=2 strictly pre-onset frames ' ...
+        'for a baseline SD. Check onset times / frame rate.'],min(PTonsetIDX))
+end
 
 %for PT relative traces: frames before onset is kept consistent such that
 %PT occurs at same x for every dFFptRel trace
@@ -107,7 +129,9 @@ tPTrel = deal(zeros(maxFramesAfterOnset+maxFramesBeforeOnset,length(PTfreq)));
 for pulseN = 1:length(PTfreq)
     tPTrel(:,pulseN) = tAbsTracePulse(PTonsetIDX(pulseN)-(maxFramesBeforeOnset-1):PTonsetIDX(pulseN)+maxFramesAfterOnset,pulseN);
     
-    dFF = dFoFcalc(F(:,:,pulseN),[1 PTonsetIDX(pulseN)],1);
+    %F0 over STRICTLY pre-onset frames; the onset frame already carries
+    %signal (a 400 ms tone spans the whole onset frame at 5 Hz)
+    dFF = dFoFcalc(F(:,:,pulseN),[1 PTonsetIDX(pulseN)-1],1);
     [sigPkDff_tmp,sig_tmp,peakDFF(:,pulseN),~,~] = ...        
         pkFcalc(dFF,PTonsetIDX(pulseN),...
         msPTpulseLen(pulseN)/1000*fs+nFramesPostPulse,pkPTsigSD);
