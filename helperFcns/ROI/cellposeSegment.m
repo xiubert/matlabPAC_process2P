@@ -14,13 +14,18 @@ function [labelImg,params] = cellposeSegment(img,opts)
 %     img   H x W numeric image, OR a path to an existing .tif to segment.
 %
 %   Name-value -- where it runs
-%     'backend'   'podman-exec' (default) | 'local' | 'none'
+%     'backend'   'local' (default) | 'podman-exec' | 'none'
 %                 podman-exec : exec into an already-running container. The
 %                     image is staged into a directory visible from both
 %                     sides (see stagingHost/stagingContainer) because the
 %                     animal data drive is not bind-mounted into it.
-%                 local       : `cellpose` on the host PATH; no staging, the
-%                     image is written next to outDir.
+%                 local       : `cellpose` run directly on this machine, in
+%                     the conda env named by 'condaEnv' (default 'suite2p',
+%                     which has cellpose 4.2.1.1 and the cpsam model cached
+%                     under ~/.cellpose). No container, no staging directory,
+%                     and outputs are owned by the calling user -- prefer
+%                     this unless the container is the only place cellpose
+%                     lives.
 %                 none        : do not run anything; read a
 %                     <name>_cp_masks.tif that already exists. For re-reading
 %                     a previous run, or wiring in another segmenter.
@@ -37,9 +42,13 @@ function [labelImg,params] = cellposeSegment(img,opts)
 %                     breaks system binaries like podman in confusing ways.
 %
 %   Name-value -- what it runs
-%     'model'          --pretrained_model value, a CONTAINER path for
-%                      podman-exec. Default
-%                      '/data/cellpose_cc/.cellpose/models/cpsam'.
+%     'model'          --pretrained_model value. Default '' resolves per
+%                      backend: the CONTAINER path
+%                      '/data/cellpose_cc/.cellpose/models/cpsam' for
+%                      podman-exec, and '~/.cellpose/models/cpsam' for local.
+%     'condaEnv'       conda env for the local backend. Default 'suite2p'.
+%                      Pass '' to use whatever `cellpose` is on PATH.
+%     'condaActivate'  conda activate script. Default '~/miniconda3/bin/activate'.
 %     'useGpu'         Default true.
 %     'normPercentile' [lo hi] for --norm_percentile. Default [1 99].
 %                      Pass [] to omit (Cellpose's own default normalisation).
@@ -79,14 +88,16 @@ function [labelImg,params] = cellposeSegment(img,opts)
 
 arguments
     img
-    opts.backend           (1,:) char {mustBeMember(opts.backend,{'podman-exec','local','none'})} = 'podman-exec'
+    opts.backend           (1,:) char {mustBeMember(opts.backend,{'podman-exec','local','none'})} = 'local'
     opts.container         (1,:) char = 'cellpose'
     opts.containerUser     (1,:) char = 'cellpose_cc'
     opts.podman            (1,:) char = 'podman'
     opts.stagingHost       (1,:) char = '/media/DATA/Chris/cellpose2D/mpac_stage'
     opts.stagingContainer  (1,:) char = '/data/mpac_stage'
     opts.envPrefix         (1,:) char = 'env -u LD_LIBRARY_PATH -u LD_PRELOAD '
-    opts.model             (1,:) char = '/data/cellpose_cc/.cellpose/models/cpsam'
+    opts.model             (1,:) char = ''
+    opts.condaEnv          (1,:) char = 'suite2p'
+    opts.condaActivate     (1,:) char = '~/miniconda3/bin/activate'
     opts.useGpu            (1,1) logical = true
     opts.normPercentile          double = [1 99]
     opts.diameter                double = []
@@ -103,6 +114,16 @@ arguments
 end
 
 tRun = tic;
+
+%--- resolve the model path for whichever backend we are on ---------------
+if isempty(opts.model)
+    switch opts.backend
+        case 'podman-exec'
+            opts.model = '/data/cellpose_cc/.cellpose/models/cpsam';
+        otherwise
+            opts.model = fullfile(getenv('HOME'),'.cellpose','models','cpsam');
+    end
+end
 
 %--- where does the image live, and under what name? ----------------------
 imgIsPath = (ischar(img) || isstring(img)) && isfile(char(img));
@@ -178,7 +199,22 @@ switch opts.backend
                     opts.envPrefix,opts.podman,opts.containerUser,...
                     opts.container,strrep(cpArgs,'"','\"'));
             case 'local'
-                cmd = [opts.envPrefix cpArgs];
+                if isempty(opts.condaEnv)
+                    cmd = [opts.envPrefix cpArgs];
+                else
+                    %conda envs are activated by a shell script, so the call
+                    %has to go through a shell that sources it. The whole
+                    %cellpose command is wrapped in single quotes, so it must
+                    %not contain one -- it never does (paths and numbers), but
+                    %say so rather than emit a silently broken command line.
+                    if contains(cpArgs,'''')
+                        error('cellposeSegment:quoteInArgs',...
+                            ['The cellpose command contains a single quote, which '...
+                             'cannot be passed through the conda activation shell: %s'],cpArgs);
+                    end
+                    cmd = sprintf('%sbash -lc ''source %s %s && %s''',...
+                        opts.envPrefix,opts.condaActivate,opts.condaEnv,cpArgs);
+                end
         end
         cmd = sprintf('timeout %d %s',round(opts.timeout),cmd);
 
@@ -322,7 +358,13 @@ try
                 end
             end
         case 'local'
-            [s1,o1] = system([opts.envPrefix 'cellpose --version']);
+            if isempty(opts.condaEnv)
+                verCmd = [opts.envPrefix 'cellpose --version'];
+            else
+                verCmd = sprintf('%sbash -lc ''source %s %s && cellpose --version''',...
+                    opts.envPrefix,opts.condaActivate,opts.condaEnv);
+            end
+            [s1,o1] = system(verCmd);
             if s1==0, ver = strtrim(o1); end
             d = dir(opts.model);
             if ~isempty(d)
