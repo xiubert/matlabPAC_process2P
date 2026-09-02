@@ -32,10 +32,18 @@
 % Note: re-running after clearing tifFileList.map.SCALEDfissaFroi requires
 % clearing the workspace first so the load branch re-executes.
 %
-% TODO: compute significant responses from the trial-averaged trace per
-% ROI/stim instead of testing each individual trial separately — current
-% approach is noisier and biases significance toward high-trial-count
-% conditions.
+% SIGNIFICANCE: FRAmap tests each (ROI, freq, dB) condition ONCE, on the
+% trial-averaged onset-aligned dF/F trace, against a strictly pre-onset
+% baseline — the same convention as processBPN2P and processCGC. Peaks and
+% significance flags are one value per condition, not one per presentation:
+%   FRAmap.dBFreqMap{dB,freq}.pkDFF     nROI x 1, peak of the trial average
+%   FRAmap.dBFreqMap{dB,freq}.sigPkDFF  nROI x 1 LOGICAL
+%   FRAmap.CellSigPkLinDBfreq           peak where significant, NaN elsewhere
+% FRAmap.params records the convention used.
+%
+% Saved <animal>_FRAmap.mat files produced before this convention hold
+% per-trial significance AND a peak-squared response map, and have no
+% .params field; they must be regenerated rather than compared against.
 
 if ~exist('dataPath','var')
     dataPath = uigetdir(pwd,'Select animal data folder');

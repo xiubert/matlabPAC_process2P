@@ -2,11 +2,13 @@ function [TfraAnml,TfraROI] = compileAnmlFRA(varargin)
 defParams.tableDir = '.';
 defParams.treatment = 'pre';
 defParams.pkPTsigSD = 2;
-defParams.nFramesPostPulse = 3;
+%match processFRA's default: these silently differed, so cohort runs and
+%per-animal runs used different response windows
+defParams.nFramesPostPulse = 2;
 
 switch nargin
     case 0
-        pDir = uigetdir('D:\Data\','Select cohort directory');
+        pDir = uigetdir(pwd,'Select cohort directory');
         params = defParams;
         params.parentPath = pDir;
     case 1
