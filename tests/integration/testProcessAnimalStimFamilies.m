@@ -30,31 +30,74 @@ for fam = {'BPN','CGC'}
 end
 check(numel(dir(fullfile(aDir,'*_raw.mat')))==2, 'two _raw tables in place, no processed ones');
 
+%% ---- stage the FRA inputs too ----
+% FRA has no _raw stage: it is driven from the tif inventory. processFRA reads
+% the F traces out of tifFileList itself and the stim params out of the
+% _Pulses.mat files beside it, so the .tif files are not needed and the
+% fixture stays small (~13 MB + 200 KB rather than gigabytes of tifs).
+% Without this the folder is an animal that genuinely has no FRA data, and the
+% honest outcome is a skip -- which is asserted separately below.
+srcAnimal = fullfile(cfg.animalsRoot,'TO0007');
+haveFRAsrc = isfile(fullfile(srcAnimal,'TO0007_tifFileList.mat'));
+if haveFRAsrc
+    copyfile(fullfile(srcAnimal,'TO0007_tifFileList.mat'),aDir);
+    pf = dir(fullfile(srcAnimal,'*_Pulses.mat'));
+    for k = 1:numel(pf); copyfile(fullfile(pf(k).folder,pf(k).name),aDir); end
+end
+
 %% ---- run ----
 % processAnimalStimFamilies reports one record per family in stimGroupSpec,
 % including families this animal has no data for. Only the _raw-driven ones
 % actually run, so split the report before asserting on it.
-res = processAnimalStimFamilies(aDir,'verbose',false);
+% plotAllROI off: this animal has enough ROIs that the per-ROI FRA tiles would
+% open a stack of figures for no benefit here
+res = processAnimalStimFamilies(aDir,'verbose',false, ...
+    'scriptVars',struct('plotAllROI',false));
 ran = res(~[res.skipped]);
-check(isequal(sort({ran.family}),{'BPN','CGC'}), ...
-    sprintf('the two _raw families ran: %s', strjoin({ran.family},', ')));
-check(all([ran.ok]), 'both families processed ok');
+expectRan = {'BPN','CGC'};
+if haveFRAsrc; expectRan = {'BPN','CGC','FRA'}; end
+check(isequal(sort({ran.family}),expectRan), ...
+    sprintf('families that ran: %s (expected %s)', ...
+        strjoin({ran.family},', '), strjoin(expectRan,', ')));
+check(all([ran.ok]), 'all families processed ok');
 check(all(arrayfun(@(r) isfile(r.procFile), ran)), 'processed tables written');
-check(all(arrayfun(@(r) isfile(r.rawFile), ran)), '_raw inputs still present');
+check(all(arrayfun(@(r) isfile(r.rawFile), ran)), 'inputs still present');
 
-% FRA is registered in stimGroupSpec but has no _raw stage (suffixRaw is ''),
-% so processAnimalStimFamilies can never drive processFRA -- its isfile check
-% on [animal suffixRaw] can never hit. It is reported as skipped, and the
-% per-animal FRA table has to come from running processFRA directly.
-% Asserted here to pin the current behaviour, not to endorse it: if
-% processAnimalStimFamilies grows a no-_raw branch, this is the check to
-% revisit.
+% FRA has no _raw stage (suffixRaw is ''), so its gate is the tif inventory
+% rather than a _raw table. This used to be impossible to satisfy: the gate
+% built <dataPath>/<animal>, which never exists, so FRA was skipped for every
+% animal and the reason claimed it had no tifs of this family.
 fra = res(strcmp({res.family},'FRA'));
-check(isscalar(fra) && fra.skipped && ~fra.ok, ...
-    'FRA is reported as skipped (it has no _raw stage to drive)');
+check(isscalar(fra) && endsWith(fra.rawFile,'_tifFileList.mat'), ...
+    'FRA gate checks the tif inventory, not a nonexistent _raw path');
+if haveFRAsrc
+    check(fra.ok && ~fra.skipped, ...
+        sprintf('FRA runs when the inventory is present (reason: "%s")',fra.reason));
+    check(endsWith(fra.procFile,'_anmlROI_FRAtable.mat') && isfile(fra.procFile), ...
+        'FRA wrote its long-form table');
+else
+    check(fra.skipped && contains(fra.reason,'no tif inventory'), ...
+        'FRA skips with an accurate reason when the inventory is absent');
+end
+
+% ...and it must still skip, with an ACCURATE reason, when there is nothing to
+% run on. The wrong reason is what made the old behaviour costly: an animal
+% with map tifs was told it had none.
+sbx = testSandbox('noMapTifs');
+noMap = fullfile(sbx,'AA0001'); mkdir(noMap);
+sNo = processAnimalStimFamilies(noMap,'families',{'FRA'},'verbose',false);
+check(sNo.skipped && contains(sNo.reason,'no tif inventory'), ...
+    sprintf('missing inventory reported as such: "%s"',sNo.reason));
+
+tifFileList = struct('stim',struct('name','x.tif'));   % inventory, but no .map
+save(fullfile(noMap,'AA0001_tifFileList.mat'),'tifFileList');
+sNo2 = processAnimalStimFamilies(noMap,'families',{'FRA'},'verbose',false);
+check(sNo2.skipped && contains(sNo2.reason,'no map tifs'), ...
+    sprintf('inventory without map tifs reported as such: "%s"',sNo2.reason));
 
 for r = ran
-    T = getfield(load(r.procFile,'anmlROIbyStim'),'anmlROIbyStim'); %#ok<GFLD>
+    vn = stimGroupSpec(r.family).varname;   % FRA's is anmlROIbyFRA, not ...byStim
+    T = getfield(load(r.procFile,vn),vn); %#ok<GFLD>
     rep = validateStimGroup(T,r.family,'verbose',false);
     check(rep.ok, sprintf('%s processed table validates',r.family));
 end
