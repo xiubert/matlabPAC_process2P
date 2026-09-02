@@ -75,6 +75,14 @@ plotAllROI = true;
 
 FRAmap = FRAmap(tifFileList,pkPTsigSD,nFramesPostPulse,'SCALEDfissaFroi');
 save(fullfile(dataPath,[animal '_FRAmap.mat']),'dataPath','FRAmap','-v7.3')
+
+% Long-form (ROI x freq x dB) companion table. This is what the cohort path
+% consumes: aggregateStimGroup, validateStimGroup and groupN all work on
+% tables, so writing one here lets FRA use the same generic group machinery
+% as BPN and CGC rather than a parallel one.
+anmlROIbyFRA = FRAmap2table(FRAmap,animal);
+save(fullfile(dataPath,[animal '_anmlROI_FRAtable.mat']), ...
+    'dataPath','anmlROIbyFRA','-v7.3')
 %% PLOT OUTPUT | Sig Responses
 
 plotFRAmap(FRAmap,'plotAllROI',plotAllROI)
