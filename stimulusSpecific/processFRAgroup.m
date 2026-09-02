@@ -36,7 +36,7 @@ addpath(genpath(fullfile(fileparts(fileparts(mfilename('fullpath'))),'helperFcns
 
 %% params (EDIT IF NEEDED)
 nConsec  = 1;      % consecutive significant levels defining threshold
-minBand  = 3;      % contiguous significant frequencies for a level to count
+minBand  = 2;      % contiguous significant frequencies for a level to count
 nExample = 8;      % example single-cell FRAs in the colormap figure
 sigOnly  = true;   % colormaps from significant peaks only
 

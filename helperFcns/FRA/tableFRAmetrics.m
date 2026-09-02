@@ -37,7 +37,7 @@ function out = tableFRAmetrics(T,varargin)
 %     'bwDrop'     - how bandwidth is delimited, see below. Default
 %                    'contiguous'.
 %     'minBand'    - contiguous significant frequencies required before a
-%                    level counts toward threshold. Default 3 (0.25 oct at
+%                    level counts toward threshold. Default 2 (0.125 oct at
 %                    0.125 oct spacing). With 28 frequencies tested per level
 %                    a single isolated significant frequency is common by
 %                    chance, so requiring a band is what keeps `threshold`
@@ -93,7 +93,7 @@ addParameter(p,'cellIDvars',{'animal','roiID'},@(x) iscellstr(x)||isstring(x)); 
 addParameter(p,'nConsec',1,@(x) isnumeric(x)&&isscalar(x)&&x>=1);
 addParameter(p,'bwRefStep',1,@(x) isnumeric(x)&&isscalar(x)&&x>=0);
 addParameter(p,'bwDrop','contiguous',@(x) any(strcmpi(x,{'contiguous','total'})));
-addParameter(p,'minBand',3,@(x) isnumeric(x)&&isscalar(x)&&x>=1);
+addParameter(p,'minBand',2,@(x) isnumeric(x)&&isscalar(x)&&x>=1);
 parse(p,T,varargin{:});
 cellIDvars = cellstr(p.Results.cellIDvars);
 nConsec    = p.Results.nConsec;

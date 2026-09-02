@@ -23,7 +23,7 @@ function out = plotFRAgroup(src,varargin)
 %     'nConsec'    - consecutive significant levels defining threshold.
 %                    Default 1.
 %     'minBand'    - contiguous significant frequencies required for a level
-%                    to count. Default 3. See tableFRAmetrics.
+%                    to count. Default 2. See tableFRAmetrics.
 %     'nExample'   - example single-cell FRAs to draw. Default 9.
 %     'sigOnly'    - draw the colormaps from significant peaks only (true,
 %                    default) or from every peak (false).
@@ -61,7 +61,7 @@ p = inputParser;
 addRequired(p,'src');
 addParameter(p,'plots',{'bf','threshold','bw','fra'},@(x) iscellstr(x)||isstring(x)); %#ok<ISCLSTR>
 addParameter(p,'nConsec',1,@(x) isnumeric(x)&&isscalar(x));
-addParameter(p,'minBand',3,@(x) isnumeric(x)&&isscalar(x));
+addParameter(p,'minBand',2,@(x) isnumeric(x)&&isscalar(x));
 addParameter(p,'nExample',9,@(x) isnumeric(x)&&isscalar(x));
 addParameter(p,'sigOnly',true,@islogical);
 addParameter(p,'bfEdges',[],@(x) isempty(x)||isnumeric(x));

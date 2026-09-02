@@ -21,6 +21,8 @@ addRequired(p,'tifFileList',@isstruct)
 addRequired(p,'pkPTsigSD',@isscalar)
 addRequired(p,'nFramesPostPulse',@isscalar)
 addOptional(p,'FsourceString','SCALEDfissaFroi',@ischar);
+addParameter(p,'nBaselineFrames',[],@(x) isempty(x)||(isscalar(x)&&x>=2));
+addParameter(p,'baselineDecayMargin',2,@(x) isscalar(x)&&x>=0);
 
 parse(p,tifFileList,pkPTsigSD,nFramesPostPulse,varargin{:});
 
@@ -28,6 +30,8 @@ tifFileList = p.Results.tifFileList;
 pkPTsigSD = p.Results.pkPTsigSD;
 nFramesPostPulse = p.Results.nFramesPostPulse;
 FsourceString = p.Results.FsourceString;
+nBaselineFrames = p.Results.nBaselineFrames;
+baselineDecayMargin = p.Results.baselineDecayMargin;
 
 tifDir = tifFileList.map(1).folder;
 [PTfreq,PTdBampl,PTonsetInPulse,msPTpulseLen,paramS] = deal(cell(length(tifFileList.map),1));
@@ -104,48 +108,97 @@ if isempty(PTonsetIDX) || min(PTonsetIDX) < 3
 end
 
 %for PT relative traces: frames before onset is kept consistent such that
-%PT occurs at same x for every dFFptRel trace
-%with onset of 0.6s, dFF starts from ABSidx 1, pulse on ABSidx 3
-%with onset of 1s, dFF starts from ABSidx 3, pulse on ABSidx 5
-%pulse occurs at ptRelIDX 3 for all then regardless of onset
+%PT occurs at same x for every dFFptRel trace, regardless of that pulse's
+%own onset time
 maxFramesAfterOnset = framesPerPulse-max(PTonsetIDX);
-maxFramesBeforeOnset = min(PTonsetIDX);
 
+%Keep the FULL per-tif array. The baseline below reaches BACKWARDS out of a
+%pulse window into the preceding silence, so cropping to the stim period
+%first (as this used to) would throw away exactly the frames it needs.
 F = cat(3,tifFileList(:).map.(FsourceString));
+nTif = length(tifFileList.map);
+tAbsFull = (0:size(F,2)-1)/fs;
 
-tAbs = 0:1/fs:(size(F,2)/fs)-1/fs;
-tAbs = tAbs(param.stimDelay*fs+1:param.stimDelay*fs+framesPerPulse*nPulsePerFile);
-tAbsTracePulse = reshape(tAbs,framesPerPulse,nPulsePerFile);
-tAbsTracePulse = repmat(tAbsTracePulse,[1 length(tifFileList.map)]);
+%Absolute within-tif frame of each pulse's tone onset. Pulses are contiguous
+%segments of one recording, so absolute indexing is what lets a baseline span
+%a pulse boundary.
+nFrameWindowPulse = ceil(msPTpulseLen/1000*fs) + nFramesPostPulse;
+[absOnset,tifOfPulse] = deal(zeros(length(PTfreq),1));
+for pulseN = 1:length(PTfreq)
+    tifOfPulse(pulseN) = ceil(pulseN/nPulsePerFile);
+    pLocal = pulseN - (tifOfPulse(pulseN)-1)*nPulsePerFile;
+    absOnset(pulseN) = param.stimDelay*fs + (pLocal-1)*framesPerPulse + PTonsetIDX(pulseN);
+end
 
-F = F(:,param.stimDelay*fs+1:param.stimDelay*fs+framesPerPulse*nPulsePerFile,:);
-F = reshape(F,nCell,framesPerPulse,nPulsePerFile*length(tifFileList.map)); %now nCell x pulseFrames x nPulse
+%% baseline length
+%The ISI (%g s here) is much longer than the response, so each pulse ends in
+%genuine silence. Reaching back across the pulse boundary buys a far better
+%SD estimate than the 2-3 pre-onset frames inside the window: measured on
+%TO0003 it lifts the real-vs-sham discrimination from 1.42x to 1.53x, and it
+%lowers the false-positive rate (sham 0.33 -> 0.25).
+%
+%The limit is the PREVIOUS tone's response, which must stay out of the
+%baseline. For the first pulse of a tif the limit is instead the start of the
+%recording, and the stimDelay period before it is silent.
+if isempty(nBaselineFrames)
+    nBase = Inf;
+    for pulseN = 1:length(PTfreq)
+        pLocal = pulseN - (tifOfPulse(pulseN)-1)*nPulsePerFile;
+        if pLocal == 1
+            lim = absOnset(pulseN)-1;                       % into the stim delay
+        else
+            prevOnset = absOnset(pulseN-1);
+            lim = absOnset(pulseN) - (prevOnset + nFrameWindowPulse(pulseN-1) + baselineDecayMargin);
+        end
+        nBase = min(nBase,lim);
+    end
+    %never shorter than the original within-pulse baseline
+    nBase = max(nBase, min(PTonsetIDX)-1);
+else
+    nBase = nBaselineFrames;
+end
+if nBase < 2
+    error('FRAmap:baselineTooShort', ...
+        'baseline resolved to %d frames; need >=2 for an SD',nBase);
+end
+if any(absOnset-nBase < 1)
+    error('FRAmap:baselineBeforeRecording', ...
+        'a %d-frame baseline runs before the start of the recording',nBase);
+end
+
+%onset sits at this column of every aligned trace
+onsetCol = nBase + 1;
 
 %% obtain dFF trace for each pulse, output dFFptRel --> dFF for each pulse
-%onset-aligned so PT onset sits at column maxFramesBeforeOnset for every
-%pulse, regardless of that pulse's own onset time. Peaks are NOT taken here:
-%significance is tested once per (cell,freq,dB) on the trial-averaged trace
-%below, per pkFcalc's contract.
+%Each pulse is extracted as ONE contiguous segment: nBase silent frames, the
+%onset frame, then maxFramesAfterOnset. The segment is onset-aligned by
+%construction, so PT onset sits at column onsetCol for every pulse regardless
+%of its own onset time, and the baseline that F0 and the significance test
+%both use is the leading nBase columns.
+%
+%Peaks are NOT taken here: significance is tested once per (cell,freq,dB) on
+%the trial-averaged trace below, per pkFcalc's contract.
+alignedLen = nBase + 1 + maxFramesAfterOnset;
 peakDFFbyTrial = zeros(nCell,length(PTfreq));
-[rawFptRel,dFFptRel] = deal(zeros(nCell,maxFramesAfterOnset+maxFramesBeforeOnset,length(PTfreq)));
-tPTrel = zeros(maxFramesAfterOnset+maxFramesBeforeOnset,length(PTfreq));
-
-onsetCol = maxFramesBeforeOnset;    %PT onset column in the aligned traces
+[rawFptRel,dFFptRel] = deal(zeros(nCell,alignedLen,length(PTfreq)));
+tPTrel = zeros(alignedLen,length(PTfreq));
 
 for pulseN = 1:length(PTfreq)
-    tPTrel(:,pulseN) = tAbsTracePulse(PTonsetIDX(pulseN)-(maxFramesBeforeOnset-1):PTonsetIDX(pulseN)+maxFramesAfterOnset,pulseN);
+    span = absOnset(pulseN)-nBase : absOnset(pulseN)+maxFramesAfterOnset;
+    seg  = F(:,span,tifOfPulse(pulseN));
 
-    %F0 over STRICTLY pre-onset frames; the onset frame already carries
-    %signal (a 400 ms tone spans the whole onset frame at 5 Hz)
-    dFF = dFoFcalc(F(:,:,pulseN),[1 PTonsetIDX(pulseN)-1],1);
+    %F0 over the extended STRICTLY pre-onset baseline. The onset frame is
+    %excluded: a 400 ms tone spans the whole onset frame at 5 Hz, so it
+    %already carries signal.
+    F0 = mean(seg(:,1:nBase),2);
 
-    rawFptRel(:,:,pulseN) = F(:,PTonsetIDX(pulseN)-(maxFramesBeforeOnset-1):PTonsetIDX(pulseN)+maxFramesAfterOnset,pulseN);
-    dFFptRel(:,:,pulseN) = dFF(:,PTonsetIDX(pulseN)-(maxFramesBeforeOnset-1):PTonsetIDX(pulseN)+maxFramesAfterOnset);
+    tPTrel(:,pulseN)      = tAbsFull(span)';
+    rawFptRel(:,:,pulseN) = seg;
+    dFFptRel(:,:,pulseN)  = (seg - F0)./F0;
 
     %retained for diagnostics only; nothing downstream tests these
     peakDFFbyTrial(:,pulseN) = max(dFFptRel(:,onsetCol:onsetCol+ ...
-        nFrameWindowFor(msPTpulseLen(pulseN),fs,nFramesPostPulse)-1,pulseN),[],2);
-    clear dFF
+        nFrameWindowPulse(pulseN)-1,pulseN),[],2);
 end
 
 %% organize by freq/dB
@@ -203,7 +256,7 @@ end
 %sibling cell for its field sizes: that probe searched the already-filled
 %array and so picked the empty pair itself, yielding NaN([0 0]) instead of
 %NaN(nCell,1) and breaking the reshape below.
-nFrameAligned = maxFramesAfterOnset+maxFramesBeforeOnset;
+nFrameAligned = alignedLen;
 emptyIDX = cellfun(@(c) isempty(c.dFFptRel),dBFreqMap);
 if any(emptyIDX,'all')
     disp('There are missing frequency / level pairs')
@@ -256,8 +309,11 @@ FRAoutput.params = struct(...
     'nFramesPostPulse',nFramesPostPulse,...
     'FsourceString',FsourceString,...
     'onsetCol',onsetCol,...
+    'nBaselineFrames',nBase,...
+    'baselineDecayMargin',baselineDecayMargin,...
+    'alignedLen',alignedLen,...
     'sigMethod','trialAveraged',...
-    'baseline','preOnsetExclusive',...
+    'baseline','preOnsetExtended',...
     'onsetConvention','firstFrameAtOrAfterOnset');
 
 % BF
