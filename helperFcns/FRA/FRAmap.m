@@ -121,75 +121,121 @@ tAbsTracePulse = repmat(tAbsTracePulse,[1 length(tifFileList.map)]);
 F = F(:,param.stimDelay*fs+1:param.stimDelay*fs+framesPerPulse*nPulsePerFile,:);
 F = reshape(F,nCell,framesPerPulse,nPulsePerFile*length(tifFileList.map)); %now nCell x pulseFrames x nPulse
 
-%% obtain dFF trace for each pulse, extract peak, output dFFptRel --> dFF for each pulse w/ PT onset at IDX 3 (first post pulse frame is 4)
-[peakDFF,sigPkDff] = deal(zeros(nCell,length(PTfreq)));
+%% obtain dFF trace for each pulse, output dFFptRel --> dFF for each pulse
+%onset-aligned so PT onset sits at column maxFramesBeforeOnset for every
+%pulse, regardless of that pulse's own onset time. Peaks are NOT taken here:
+%significance is tested once per (cell,freq,dB) on the trial-averaged trace
+%below, per pkFcalc's contract.
+peakDFFbyTrial = zeros(nCell,length(PTfreq));
 [rawFptRel,dFFptRel] = deal(zeros(nCell,maxFramesAfterOnset+maxFramesBeforeOnset,length(PTfreq)));
-tPTrel = deal(zeros(maxFramesAfterOnset+maxFramesBeforeOnset,length(PTfreq)));
+tPTrel = zeros(maxFramesAfterOnset+maxFramesBeforeOnset,length(PTfreq));
+
+onsetCol = maxFramesBeforeOnset;    %PT onset column in the aligned traces
 
 for pulseN = 1:length(PTfreq)
     tPTrel(:,pulseN) = tAbsTracePulse(PTonsetIDX(pulseN)-(maxFramesBeforeOnset-1):PTonsetIDX(pulseN)+maxFramesAfterOnset,pulseN);
-    
+
     %F0 over STRICTLY pre-onset frames; the onset frame already carries
     %signal (a 400 ms tone spans the whole onset frame at 5 Hz)
     dFF = dFoFcalc(F(:,:,pulseN),[1 PTonsetIDX(pulseN)-1],1);
-    [sigPkDff_tmp,sig_tmp,peakDFF(:,pulseN),~,~] = ...        
-        pkFcalc(dFF,PTonsetIDX(pulseN),...
-        msPTpulseLen(pulseN)/1000*fs+nFramesPostPulse,pkPTsigSD);
-    sigPkDff(sig_tmp,pulseN) = sigPkDff_tmp;
-%     [sigPkDff(:,pulseN),~,peakDFF(:,pulseN),~,~] = ...        
-%         pkFcalc(dFF,PTonsetIDX(pulseN),...
-%         msPTpulseLen(pulseN)/1000*fs+nFramesPostPulse,pkPTsigSD);
-%     
+
     rawFptRel(:,:,pulseN) = F(:,PTonsetIDX(pulseN)-(maxFramesBeforeOnset-1):PTonsetIDX(pulseN)+maxFramesAfterOnset,pulseN);
     dFFptRel(:,:,pulseN) = dFF(:,PTonsetIDX(pulseN)-(maxFramesBeforeOnset-1):PTonsetIDX(pulseN)+maxFramesAfterOnset);
-    clear dFF sig
+
+    %retained for diagnostics only; nothing downstream tests these
+    peakDFFbyTrial(:,pulseN) = max(dFFptRel(:,onsetCol:onsetCol+ ...
+        nFrameWindowFor(msPTpulseLen(pulseN),fs,nFramesPostPulse)-1,pulseN),[],2);
+    clear dFF
 end
 
 %% organize by freq/dB
 [uFreq,~,fqIDX] = unique(PTfreq);
 [uDB,~,uDBidx] = unique(PTdBampl);
 dBFreqMap = cell(length(uDB),length(uFreq));
-dBFreqMap(:) = {struct('tPTrel',[],'rawFptRel',[],'dFFptRel',[],'pkDFF',[],'sigPkDFF',[])};
+dBFreqMap(:) = {struct('tPTrel',[],'rawFptRel',[],'dFFptRel',[],'dFFavg',[],...
+    'pkDFF',[],'sigPkDFF',[],'pkDFFbyTrial',[],'msPulseLen',[])};
 
 %uDB is ascending as rows inc so fill cells according to that, then flip UD
 %(70 in last row)
 for pNo = 1:length(PTfreq)
     fqCol = fqIDX(pNo);
     dBrow = uDBidx(pNo);
-    
+
     dBFreqMap{dBrow,fqCol}.tPTrel = cat(2,dBFreqMap{dBrow,fqCol}.tPTrel,tPTrel(:,pNo));
     dBFreqMap{dBrow,fqCol}.rawFptRel = cat(3,dBFreqMap{dBrow,fqCol}.rawFptRel,rawFptRel(:,:,pNo));
     dBFreqMap{dBrow,fqCol}.dFFptRel = cat(3,dBFreqMap{dBrow,fqCol}.dFFptRel,dFFptRel(:,:,pNo));
-    
-    dBFreqMap{dBrow,fqCol}.pkDFF = cat(2,dBFreqMap{dBrow,fqCol}.pkDFF,peakDFF(:,pNo));
-    dBFreqMap{dBrow,fqCol}.sigPkDFF = cat(2,dBFreqMap{dBrow,fqCol}.sigPkDFF,sigPkDff(:,pNo));
+
+    dBFreqMap{dBrow,fqCol}.pkDFFbyTrial = cat(2,dBFreqMap{dBrow,fqCol}.pkDFFbyTrial,peakDFFbyTrial(:,pNo));
+    dBFreqMap{dBrow,fqCol}.msPulseLen = cat(2,dBFreqMap{dBrow,fqCol}.msPulseLen,msPTpulseLen(pNo));
     clear fqCol dBrow
 end
 
+%% trial-averaged peak + significance, one test per (cell,freq,dB)
+%Averaging over trials first is what pkFcalc requires: a single presentation
+%gives only a handful of pre-onset frames, and averaging only the trials that
+%passed a per-trial test would condition the reported response on being large.
+%Trials within a cell may come from different onset groups; dFFptRel is
+%onset-aligned, so that is exactly what the averaging is for.
+%
+%BASELINE: strictly pre-onset (1:onsetCol-1). The onset frame carries real
+%signal, so pkFcalc's default 1:frameStart would inflate the threshold in
+%proportion to the response being tested.
+for i = 1:numel(dBFreqMap)
+    c = dBFreqMap{i};
+    if isempty(c.dFFptRel)
+        continue    %missing freq/dB pair; filled in below
+    end
+    uLen = unique(c.msPulseLen);
+    if ~isscalar(uLen)
+        error('pulse lengths differ within one freq/dB condition: %s ms',mat2str(uLen))
+    end
+    nFrameWindow = nFrameWindowFor(uLen,fs,nFramesPostPulse);
+
+    dBFreqMap{i}.dFFavg = mean(c.dFFptRel,3,'omitnan');
+    [~,sig,pk] = pkFcalc(dBFreqMap{i}.dFFavg,onsetCol,nFrameWindow,...
+        pkPTsigSD,1:onsetCol-1);
+    dBFreqMap{i}.pkDFF = pk;            %nCell x 1, peak of the trial average
+    dBFreqMap{i}.sigPkDFF = sig;        %nCell x 1 LOGICAL mask
+end
+
+%% fill missing frequency / level pairs
+%built explicitly from the known nCell / nFrames rather than probing a
+%sibling cell for its field sizes: that probe searched the already-filled
+%array and so picked the empty pair itself, yielding NaN([0 0]) instead of
+%NaN(nCell,1) and breaking the reshape below.
+nFrameAligned = maxFramesAfterOnset+maxFramesBeforeOnset;
+emptyIDX = cellfun(@(c) isempty(c.dFFptRel),dBFreqMap);
+if any(emptyIDX,'all')
+    disp('There are missing frequency / level pairs')
+    emptyStruct = struct('tPTrel',NaN(nFrameAligned,0),...
+        'rawFptRel',NaN(nCell,nFrameAligned,0),...
+        'dFFptRel',NaN(nCell,nFrameAligned,0),...
+        'dFFavg',NaN(nCell,nFrameAligned),...
+        'pkDFF',NaN(nCell,1),...
+        'sigPkDFF',false(nCell,1),...
+        'pkDFFbyTrial',NaN(nCell,0),...
+        'msPulseLen',NaN(1,0));
+    dBFreqMap(emptyIDX) = deal({emptyStruct});
+end
+
 %% mean pk responses across cells
-uPkResp = cellfun(@nanmean,cellfun(@(c) nanmean(c.pkDFF,2),dBFreqMap,'uni',0));
-uSigPkResp = cellfun(@(c) nanmean(nanmean(zero2nan(c.pkDFF.*c.sigPkDFF),2)),dBFreqMap);
+%sigPkOrNaN keeps the PEAK where significant and NaN elsewhere. The old form
+%multiplied pkDFF by sigPkDFF, which held peak VALUES rather than a 0/1 mask,
+%so the "significant response" maps were peak SQUARED.
+sigPkOrNaN = @(c) local_sigPkOrNaN(c);
+
+uPkResp = cellfun(@(c) mean(c.pkDFF,'omitnan'),dBFreqMap);
+uSigPkResp = cellfun(@(c) mean(sigPkOrNaN(c),'omitnan'),dBFreqMap);
 
 %% Calculate BF for each cell from peak response
 %takes average of cell peak responses first, then max across
 %frequency/level
 dBFreqLin = numel(dBFreqMap);
 
-tmp = cellfun(@(c) nanmean(zero2nan(c.pkDFF.*c.sigPkDFF),2),dBFreqMap,'uni',0);
-%deal with missing frequency / level pairs
-if any(cellfun(@isempty,tmp),'all')
-    disp('There are missing frequency / level pairs')
-    emptyIDX = cellfun(@isempty,tmp);
-    tmp(emptyIDX) = deal({NaN(nCell,1)});
-    tmpS = dBFreqMap{find(~cellfun(@isempty,tmp),1)};
-    emptyStruct = cell2struct(cellfun(@(c) NaN(c),...
-        varfun(@(v) size(v{1}),struct2table(tmpS,'AsArray',1),...
-        'OutputFormat','cell'),'uni',0),fieldnames(tmpS),2);
-    dBFreqMap(emptyIDX) = deal({emptyStruct});
-    clear tmpS
-end
-sigPkCell = reshape(cell2mat(tmp),[nCell dBFreqLin]);
-pkCell = reshape(cell2mat(cellfun(@(c) nanmean(c.pkDFF,2),dBFreqMap,'uni',0)),[nCell dBFreqLin]);
+%reshape maps the linear column index to sub2ind([nDB nFreq]) ordering, which
+%is what anmlFRA2BF and anmlFRA2dPrime assume
+sigPkCell = reshape(cell2mat(cellfun(sigPkOrNaN,dBFreqMap,'uni',0)),[nCell dBFreqLin]);
+pkCell = reshape(cell2mat(cellfun(@(c) c.pkDFF,dBFreqMap,'uni',0)),[nCell dBFreqLin]);
 
 
 %% send relevant vars to output
@@ -203,8 +249,33 @@ FRAoutput.uSigPkResp = uSigPkResp;
 FRAoutput.CellPkRespLinDBfreq = pkCell;
 FRAoutput.CellSigPkLinDBfreq = sigPkCell;
 
+%provenance: lets a stale saved _FRAmap.mat be told apart from one built by
+%the trial-averaged pipeline
+FRAoutput.params = struct(...
+    'pkPTsigSD',pkPTsigSD,...
+    'nFramesPostPulse',nFramesPostPulse,...
+    'FsourceString',FsourceString,...
+    'onsetCol',onsetCol,...
+    'sigMethod','trialAveraged',...
+    'baseline','preOnsetExclusive',...
+    'onsetConvention','firstFrameAtOrAfterOnset');
+
 % BF
 FRAoutput.BFuDB = anmlFRA2BF(FRAoutput);
 % dPrime
 FRAoutput.dPrime = anmlFRA2dPrime(FRAoutput);
+
+end %function
+
+function n = nFrameWindowFor(msPulseLen,fs,nFramesPostPulse)
+%frames spanned by the tone plus the post-pulse tail. ceil, not truncation:
+%a bare colon floors a fractional window and silently drops a frame.
+n = ceil(msPulseLen/1000*fs) + nFramesPostPulse;
+end
+
+function p = local_sigPkOrNaN(c)
+%peak of the trial-averaged trace where significant, NaN otherwise
+p = c.pkDFF;
+p(~c.sigPkDFF) = NaN;
+end
 
