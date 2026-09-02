@@ -26,7 +26,7 @@ MATLAB pipeline for processing two-photon calcium imaging data, from raw ScanIma
                                                                  → _anmlROI_FRAtable.mat
                                                     │               (FRA has no _raw stage: it is
                                                     │                driven from _tifFileList.mat)
- ONCE PER GROUP, PER FAMILY                        ▼
+ ONCE PER GROUP, PER FAMILY                         ▼
  ──────────────────────────      aggregateStimGroup(manifest)
                                    validate each animal, canonicalise column order,
                                    concatenate, stamp provenance
