@@ -126,11 +126,26 @@ if useSIR
     if ~isempty(copyTag) && ~isfield(imHeader,'tifFromSplit')
         imHeader.tifFromSplit = copyTag;
     end
-    needsTranspose = sirNeedsTranspose(vol(:,:,1),refFrame,opt.permuteXY);
-    nDirs = size(vol,3);
-    accH  = size(vol,1);
-    accW  = size(vol,2);
-else
+    [needsTranspose,matchedRef] = sirNeedsTranspose(vol(:,:,1),refFrame,opt.permuteXY);
+    if ~matchedRef
+        %frame 1 matches MATLAB's own read in NEITHER orientation, so the mex
+        %is not returning the pixels this file actually holds -- seen on tifs
+        %written by writeMoCorTifs.  Guessing "it must be transposed" turns
+        %that into a silently wrong projection (a mean of int16 data coming
+        %back as +-8000), so drop to the reader that agrees with imread.
+        warning([mfilename ':sirMismatch'],['ScanImageTiffReader''s frame 1 does '...
+            'not match MATLAB''s in either orientation for %s; falling back to '...
+            'the Tiff class rather than guessing.'],tifFile)
+        useSIR = false;
+        vol    = [];
+    else
+        nDirs = size(vol,3);
+        accH  = size(vol,1);
+        accW  = size(vol,2);
+    end
+end
+
+if ~useSIR
     imginfo        = imfinfo(tifFile);
     nDirs          = numel(imginfo);   %actual directories, not what the header claims
     accH           = imginfo(1).Height;
@@ -285,25 +300,30 @@ end
 hT.close();
 end
 %--------------------------------------------------------------------------
-function tf = sirNeedsTranspose(sirFrame,refFrame,mode)
+function [tf,matched] = sirNeedsTranspose(sirFrame,refFrame,mode)
 %ScanImageTiffReader hands back data in file (row-major) order, so it is
 %normally the transpose of Tiff.read.  Rather than hard-coding
 %permute(vol,[2 1 3]), check it against directory 1.
+%
+%matched says whether the two readers agree at all.  When they do not, the
+%caller falls back to the Tiff class: a mismatch means the mex is handing
+%back different PIXELS, not merely a different orientation, and no permute
+%can rescue that.
 if ~(ischar(mode) || isstring(mode))
     tf = logical(mode);
+    matched = true;
     return
 end
 a = double(refFrame);
 b = double(sirFrame);
+matched = true;
 if isequal(size(a),size(b)) && isequal(a,b)
     tf = false;
 elseif isequal(size(a),size(b.')) && isequal(a,b.')
     tf = true;
 else
-    warning('flattenTif:orientation',['Couldn''t match ScanImageTiffReader''s '...
-        'frame 1 to MATLAB''s (mroi/stripe data?); assuming it is transposed. '...
-        'Pass ''permuteXY'',false if that is wrong.'])
     tf = true;
+    matched = false;
 end
 end
 %--------------------------------------------------------------------------
