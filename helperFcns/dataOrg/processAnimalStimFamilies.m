@@ -18,12 +18,18 @@ function out = processAnimalStimFamilies(dataPath,varargin)
 %   and significance are per-animal quantities -- they cannot be deferred to
 %   the grouping step.
 %
+%   Not every family has a _raw stage. FRA is driven straight from the tif
+%   inventory (processFRA -> FRAmap), so its stimGroupSpec entry has an empty
+%   suffixRaw and its precondition is <animal>_tifFileList.mat containing map
+%   tifs, not a _raw table. The gate below checks whichever applies.
+%
 %   Inputs:
 %     dataPath - animal data folder (the same one processAnimal2P used).
 %
 %   Name/Value:
 %     'families'  - families to consider. Default: every family in
-%                   stimGroupSpec that has a _raw table in dataPath.
+%                   stimGroupSpec whose input for this animal is present --
+%                   a _raw table, or map tifs for a family without one.
 %     'showPlots' - leave each script's QC figures open. Default false;
 %                   figures the scripts create are closed again afterwards so
 %                   a batch run does not accumulate dozens of windows.
@@ -86,14 +92,29 @@ out = struct('family',{},'ok',{},'skipped',{},'reason',{}, ...
     'rawFile',{},'procFile',{},'script',{});
 
 for i = 1:numel(families)
-    spec    = stimGroupSpec(families{i});
-    rawFile = fullfile(dataPath,[animal spec.suffixRaw]);
-    proc    = fullfile(dataPath,[animal spec.suffixProcessed]);
-    rec = struct('family',spec.family,'ok',false,'skipped',true,'reason','', ...
-        'rawFile',rawFile,'procFile',proc,'script',spec.processScript);
+    spec = stimGroupSpec(families{i});
+    proc = fullfile(dataPath,[animal spec.suffixProcessed]);
 
-    if ~isfile(rawFile)
-        rec.reason = 'no _raw table (this animal has no tifs of this family)';
+    % A family with an empty suffixRaw has no _raw stage: its process* script
+    % is driven straight from the tif inventory (FRA -> FRAmap). Gating those
+    % on a _raw file builds the path <dataPath>/<animal>, which never exists,
+    % so the family was silently skipped for every animal AND told the caller
+    % it had no tifs of that family -- which for an animal with map tifs is
+    % simply false. Check the precondition each family actually has.
+    if isempty(spec.suffixRaw)
+        srcFile = fullfile(dataPath,[animal '_tifFileList.mat']);
+        [haveSrc,whyNot] = localHasMapTifs(srcFile);
+    else
+        srcFile = fullfile(dataPath,[animal spec.suffixRaw]);
+        haveSrc = isfile(srcFile);
+        whyNot  = 'no _raw table (this animal has no tifs of this family)';
+    end
+
+    rec = struct('family',spec.family,'ok',false,'skipped',true,'reason','', ...
+        'rawFile',srcFile,'procFile',proc,'script',spec.processScript);
+
+    if ~haveSrc
+        rec.reason = whyNot;
         out(end+1) = rec; %#ok<AGROW>
         if verbose; fprintf('  %-4s skipped: %s\n', spec.family, rec.reason); end
         continue
@@ -148,6 +169,24 @@ end
 end
 
 %% ---- helper ----
+function [ok,why] = localHasMapTifs(listFile)
+% Precondition for a family with no _raw stage: the tif inventory exists and
+% actually contains map tifs. Reported separately from "file missing" so the
+% skip reason says which of the two is true.
+ok = false;
+if ~isfile(listFile)
+    [~,nm,ext] = fileparts(listFile);
+    why = sprintf('no tif inventory (%s not found)',[nm ext]);
+    return
+end
+S = load(listFile,'tifFileList');
+if ~isfield(S,'tifFileList') || ~isfield(S.tifFileList,'map') || isempty(S.tifFileList.map)
+    why = 'tif inventory has no map tifs (this animal has none of this family)';
+    return
+end
+ok = true; why = '';
+end
+
 function runFamilyScript(scriptName, dataPath, animal, scriptVars) %#ok<INUSD>
 % Run the script in this isolated workspace. dataPath and animal are the two
 % variables the process* scripts look for; everything else they create stays

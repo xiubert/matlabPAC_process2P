@@ -45,17 +45,43 @@
 % per-trial significance AND a peak-squared response map, and have no
 % .params field; they must be regenerated rather than compared against.
 
-if ~exist('dataPath','var')
+% Resolving the folder and loading the tif list are SEPARATE conditions. They
+% used to be one branch, so a caller that already had dataPath in scope (as
+% processAnimalStimFamilies does) skipped the load and hit an undefined
+% tifFileList further down.
+if ~exist('dataPath','var') || isempty(dataPath)
     dataPath = uigetdir(pwd,'Select animal data folder');
     if isequal(dataPath,0)
         error('No data folder selected.');
     end
+end
+if ~exist('animal','var') || isempty(animal)
     animal = regexp(dataPath,'[A-Z]{2}\d{4}','match','once');
-    load(fullfile(dataPath,[animal '_tifFileList.mat']))
+    if isempty(animal)
+        error('processFRA:noAnimalID', ...
+            'Could not read an animal ID (e.g. AA0001) from: %s',dataPath);
+    end
 end
-if ~exist('nCell','var')
-    nCell=size(tifFileList.stim(1).rawFroi,1);
+if ~exist('tifFileList','var')
+    listFile = fullfile(dataPath,[animal '_tifFileList.mat']);
+    if ~isfile(listFile)
+        error('processFRA:noTifFileList','Not found: %s',listFile);
+    end
+    load(listFile,'tifFileList')
 end
+if ~isfield(tifFileList,'map') || isempty(tifFileList.map)
+    error('processFRA:noMapTifs', ...
+        '%s has no FRA map tifs (tifFileList.map is empty).',animal);
+end
+% tifFileList.map(n).folder is whatever path the inventory was built on, often
+% a drive letter from another machine. FRAmap resolves _Pulses.mat relative to
+% it, so repoint it at dataPath -- where the tif list itself lives, alongside
+% the tifs and their pulse files -- whenever the stored path is not present
+% here. A stored path that does exist is left alone.
+if ~isfolder(tifFileList.map(1).folder)
+    [tifFileList.map.folder] = deal(dataPath);
+end
+
 if exist('ROIoutputTables','var')
     tifStimParamTable=ROIoutputTables{2};
     anmlROIbyStim=ROIoutputTables{4};
@@ -65,7 +91,11 @@ end
 %%%%%%%%%%%%%%%%%%%%%%%%%% EDIT IF NEEDED %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 pkPTsigSD = 2;
 nFramesPostPulse = 2;
-plotAllROI = true;
+% display only, so a batch caller may pre-set it (processAnimalStimFamilies
+% 'scriptVars'); the analysis parameters above are deliberately NOT overridable
+% that way, so an orchestrated run cannot silently drift off the convention
+% stamped in stimGroupSpec
+if ~exist('plotAllROI','var'); plotAllROI = true; end
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 % MapOutputDir = fullfile(dataPath,'BFMap');
