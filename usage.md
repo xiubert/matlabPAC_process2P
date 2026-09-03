@@ -118,7 +118,7 @@ set:
 | `roi` | see below | forwarded to `cellposeROIset` |
 | `excludeNeg` | `true` | movement screening; BPN only (CGC is single-pulse and never screened) |
 | `run` | derived | folder under `analysis/`, e.g. `cellpose_20260903`; also becomes the provenance stamp — see [Where artifacts are written](#where-artifacts-are-written) |
-| `isolateRun` | `true` | `false` writes into the animal folder instead (the pre-2026-09 flat layout) |
+| `flatLayout` | `false` | `true` writes into the animal folder instead (the pre-2026-09 layout) |
 | `runLabel` | follows `run` | the provenance stamp, when you want it to differ from the folder name |
 | `stages`, `overwrite` | `1:11`, `false` | `stages` takes a subset or a `[from to]` range |
 
@@ -335,8 +335,19 @@ Two analyses of the same animal now cannot touch each other. `NoRMCorred/`
 stays shared because motion correction depends only on the acquisition — it
 would be wasteful and slow to redo per run.
 
-`animalPaths` is the single source of truth for this; no function builds an
-artifact path by hand.
+Each run folder carries a **`runInfo.json`** saying what it is, and the animal
+folder gets a **`<animal>_analysisRuns.log`** listing every run and where it
+lives — so "what has been run on this animal?" is answerable by looking:
+
+```matlab
+listRuns('/data/TO0007')
+%     run                  roiSource     created              nROI   families
+%     cellpose_20260903    cellpose      2026-09-03 14:22:01   113   BPN,CGC,FRA
+%     legacy               handDrawn     2026-09-01 09:10:44    30   BPN,CGC,FRA
+```
+
+`animalPaths` is the single source of truth for the paths themselves; no
+function builds an artifact path by hand.
 
 ```matlab
 P = animalPaths('/data/TO0007','run','cellpose_20260903');
@@ -355,7 +366,7 @@ analyses on top of each other just because nobody named them.
 To reproduce an old flat run in place, opt out explicitly:
 
 ```matlab
-processAnimal2Pheadless(dp,'isolateRun',false);   % straight into the animal folder
+processAnimal2Pheadless(dp,'flatLayout',true);   % straight into the animal folder
 ```
 
 That is the pre-2026-09 behaviour, and the one thing to know about it is what

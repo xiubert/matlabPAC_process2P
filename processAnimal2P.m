@@ -60,6 +60,7 @@ end
 runName = sprintf('manualROI_%s',datestr(now,'yyyymmdd')); %#ok<TNOW1,DATST>
 P = animalPaths(dataPath,'run',runName,'create',true);
 fprintf('artifacts -> %s\n',P.artifacts);
+writeRunInfo(P,struct('roiSource','handDrawn','entryPoint','processAnimal2P'));
 
 %% 1. Get list of tif files for analysis and treatment info
 % DO NOT RUN IF RUNNING AGAIN FOR A DIFFERENT CELL TYPE

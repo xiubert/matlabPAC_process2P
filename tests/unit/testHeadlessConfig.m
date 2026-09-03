@@ -39,7 +39,7 @@ assert(contains(cfg.run,'savedROI') || contains(cfg.run,'cellpose'), ...
     'the derived name should say which ROI source it used, got %s',cfg.run);
 
 % ...and the flat layout is still reachable for reproducing an old run in place
-flat = headlessConfig(tmp,'animal','TO9999','isolateRun',false,'verbose',false);
+flat = headlessConfig(tmp,'animal','TO9999','flatLayout',true,'verbose',false);
 assert(flat.paths.isFlat && strcmp(flat.paths.artifacts,tmp));
 
 % the calibrated ROI defaults must be what the headless run actually uses

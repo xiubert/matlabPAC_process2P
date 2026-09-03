@@ -1,7 +1,7 @@
-function fixed = ensureROIfileMeta(dataPath,animal,tifList,tifFiles)
+function fixed = ensureROIfileMeta(roiDir,animal,tifList,tifFiles)
 % ensureROIfileMeta  Backfill the bookkeeping FISSA needs into ROI files.
 %
-%   fixed = ensureROIfileMeta(dataPath,animal,tifList,tifFiles)
+%   fixed = ensureROIfileMeta(roiDir,animal,tifList,tifFiles)
 %
 %   A <animal>_moCorrROI_<cond>.mat must carry three variables besides the ROIs
 %   themselves: nTifs, tifIDXinAllTifList and moCorTifNames. The last is what
@@ -15,7 +15,9 @@ function fixed = ensureROIfileMeta(dataPath,animal,tifList,tifFiles)
 %   Files that already carry the variables are left untouched.
 %
 %   Inputs
-%     dataPath  animal folder holding the ROI files.
+%     roiDir    folder holding <animal>_moCorrROI_<cond>.mat -- the animal
+%               folder in the flat layout, analysis/<run>/ otherwise. Not
+%               necessarily the animal folder, hence not called dataPath.
 %     animal    animal ID.
 %     tifList   condition -> tif struct map (the §2 legend).
 %     tifFiles  the full tif list, for tifIDXinAllTifList.
@@ -29,7 +31,7 @@ fixed = {};
 conds = fieldnames(tifList);
 for c = 1:numel(conds)
     cond = conds{c};
-    f = fullfile(dataPath,[animal '_moCorrROI_' cond '.mat']);
+    f = fullfile(roiDir,[animal '_moCorrROI_' cond '.mat']);
     if ~isfile(f); continue, end
 
     S = load(f);

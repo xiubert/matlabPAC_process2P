@@ -81,8 +81,12 @@ F.fissaDir   = P.fissaDir;
 F.tifFileList= P.tifFileList;
 F.artifacts  = P.artifacts;
 out.files = F;
-if ~P.isFlat && V
-    fprintf('artifacts -> %s\n',P.artifacts);
+if ~P.isFlat
+    if V; fprintf('artifacts -> %s\n',P.artifacts); end
+    %describe the run before it starts, so a crashed run is still identifiable
+    writeRunInfo(P,struct('roiSource',roiSourceFor(cfg), ...
+        'stages',mat2str(cfg.stages),'excludeNeg',cfg.excludeNeg, ...
+        'entryPoint','processAnimal2Pheadless'));
 end
 
 %workspace carried between stages
@@ -152,6 +156,11 @@ for s = 1:size(stageDefs,1)
     end
 end
 
+if ~cfg.paths.isFlat
+    writeRunInfo(cfg.paths,struct('completed', ...
+        char(datetime('now','Format','uuuu-MM-dd HH:mm:ss'))));
+end
+
 if V
     fprintf('\n===== %s complete =====\n',animal);
     for k = 1:numel(out.stages)
@@ -213,6 +222,17 @@ for k = 1:numel(need)
             n,[nm ext],cfg.paths.run,f,strjoin(runs,', '), ...
             cfg.paths.root,runs{1},cfg.paths.run);
     end
+end
+end
+
+% ========================================================================
+function src = roiSourceFor(cfg)
+%what this run's ROIs will be: stage 4 segments, anything else reuses whatever
+%ROI set is already in the run folder
+if ismember(4,cfg.stages) || ismember(5,cfg.stages)
+    src = 'cellpose';
+else
+    src = 'handDrawn';
 end
 end
 

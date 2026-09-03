@@ -119,10 +119,10 @@ function cfg = headlessConfig(dataPath,varargin)
 %                     are. Default '': a name is DERIVED from the ROI source
 %                     and the date (e.g. 'cellpose_20260903'), because runs are
 %                     isolated by default. See animalPaths.
-%     'isolateRun'    false puts artifacts straight into the animal folder,
-%                     the pre-2026-09 flat layout. Default true. Only reach
-%                     for this to reproduce an old flat run in place.
-%     'artifactDir'   put artifacts in this exact folder; wins over 'run'.
+%     'flatLayout'    true puts artifacts straight into the animal folder --
+%                     the pre-2026-09 layout, where a second run overwrites
+%                     the first. Default false. Only for reproducing an old
+%                     run in place.
 %     'runLabel'      name of this analysis run. Stamped into every processed
 %                     table (see processAnimalStimFamilies), so aggregation can
 %                     refuse a table left behind by an earlier run. Defaults to
@@ -190,8 +190,7 @@ addParameter(p,'fissaCmd','default',@(x)ischar(x)||isstring(x));
 addParameter(p,'fissaScaleFactor',0.8,@(x)isnumeric(x)&&isscalar(x));
 addParameter(p,'runLabel','',@(x) ischar(x)||isstring(x));
 addParameter(p,'run','',@(x) ischar(x)||isstring(x));
-addParameter(p,'isolateRun',true,@islogical);
-addParameter(p,'artifactDir','',@(x) ischar(x)||isstring(x));
+addParameter(p,'flatLayout',false,@islogical);
 addParameter(p,'excludeNeg',true,@islogical);
 addParameter(p,'runStimFamilies',true,@islogical);
 addParameter(p,'runFRAmap',true,@islogical);
@@ -227,12 +226,11 @@ end
 cfg.treatmentName = char(cfg.treatmentName);
 cfg.runLabel      = char(cfg.runLabel);
 cfg.run           = char(cfg.run);
-cfg.artifactDir   = char(cfg.artifactDir);
 
 % One name does both jobs: the folder artifacts go in, and the provenance
 % stamp. Giving a run without a label (or vice versa) would let the two drift
 % apart, so each fills in for the other.
-if isempty(cfg.run) && ~isempty(cfg.runLabel) && isempty(cfg.artifactDir)
+if isempty(cfg.run) && ~isempty(cfg.runLabel)
     cfg.run = cfg.runLabel;
 end
 
@@ -240,7 +238,7 @@ end
 % run actually is -- the ROI source it will use, and the date -- so two
 % analyses never land on top of each other just because nobody named them.
 % Pass run='' explicitly (or an artifactDir) to opt out into the flat layout.
-if isempty(cfg.run) && isempty(cfg.artifactDir) && cfg.isolateRun
+if isempty(cfg.run) && ~cfg.flatLayout
     if ismember(4,cfg.stages) || ismember(5,cfg.stages)
         src = 'cellpose';
     else
@@ -251,7 +249,7 @@ end
 if ~isempty(cfg.run) && isempty(cfg.runLabel)
     cfg.runLabel = cfg.run;
 end
-cfg.paths = animalPaths(cfg.dataPath,'run',cfg.run,'artifactDir',cfg.artifactDir);
+cfg.paths = animalPaths(cfg.dataPath,'run',cfg.run);
 
 %--- stages ---------------------------------------------------------------
 st = cfg.stages(:)';
@@ -343,7 +341,7 @@ if ischar(cfg.mapTifs) && any(strcmpi(cfg.mapTifs,{'auto','pulses'}))
     if isempty(cfg.mapIDX)
         if strcmpi(cfg.mapTifs,'pulses')
             error('headlessConfig:noPulseFiles',...
-                ['mapTifs = ''pulses'' but no _Pulses.mat were found in %s.'],...
+                'mapTifs = ''pulses'' but no _Pulses.mat were found in %s.',...
                 cfg.dataPath);
         end
         warning('headlessConfig:noPulseFiles',...

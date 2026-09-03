@@ -1,9 +1,8 @@
 function P = animalPaths(dataPath,opts)
 % animalPaths  Resolve where an animal's inputs and artifacts live.
 %
-%   P = animalPaths(dataPath)                     % legacy flat layout
+%   P = animalPaths(dataPath)                     % flat layout
 %   P = animalPaths(dataPath,'run','cellpose_20260903')
-%   P = animalPaths(dataPath,'artifactDir',D)     % explicit override
 %
 %   Single source of truth for the layout, so no function has to build a path
 %   by hand. Everything the pipeline reads or writes falls into one of three
@@ -19,7 +18,7 @@ function P = animalPaths(dataPath,opts)
 %     PER-RUN    depends on the ROI set and the analysis parameters:
 %                _moCorrROI_*, FISSAoutput/, _moCorr_Tifs_Params,
 %                _tifFileList, _pulseLegend2P, _stimGroupIDX, _anmlROI_*,
-%                _FRAmap, and the QC images.
+%                _FRAmap, and the QC overlay.
 %
 %   With a run name, per-run artifacts go to <dataPath>/analysis/<run>/ and
 %   two analyses of the same animal cannot overwrite each other. Without one,
@@ -31,9 +30,8 @@ function P = animalPaths(dataPath,opts)
 %
 %   Name-value
 %     'run'          run name; becomes the folder under analysis/. Must be a
-%                    valid folder name. Default '' = legacy flat layout.
-%     'artifactDir'  put per-run artifacts here instead of deriving the path.
-%                    Wins over 'run'. For callers that already know the folder.
+%                    valid folder name. Default '' = the flat layout, i.e.
+%                    artifacts straight into the animal folder.
 %     'create'       create the directories. Default false, so a read-only
 %                    caller never leaves empty folders behind.
 %
@@ -42,7 +40,6 @@ function P = animalPaths(dataPath,opts)
 %     .artifacts   per-run artifacts
 %     .moCorrDir   NoRMCorred/ (shared)
 %     .fissaDir    FISSA output for THIS run
-%     .qcDir       QC images for this run
 %     .run         the run name ('' when flat)
 %     .isFlat      true when artifacts == root (the legacy layout)
 %     .legend, .condSplit, .ncParams, .moCorrTifs, .tifFileList
@@ -58,7 +55,6 @@ function P = animalPaths(dataPath,opts)
 arguments
     dataPath        (1,:) char
     opts.run        (1,:) char = ''
-    opts.artifactDir(1,:) char = ''
     opts.create     (1,1) logical = false
 end
 
@@ -72,23 +68,13 @@ P.root      = dataPath;
 P.run       = opts.run;
 P.moCorrDir = fullfile(dataPath,'NoRMCorred');
 
-if ~isempty(opts.artifactDir)
-    P.artifacts = opts.artifactDir;
-    if isempty(P.run)
-        [~,P.run] = fileparts(P.artifacts);
-    end
-elseif ~isempty(opts.run)
+if ~isempty(opts.run)
     validateRunName(opts.run);
     P.artifacts = fullfile(dataPath,'analysis',opts.run);
 else
     P.artifacts = dataPath;
 end
 P.isFlat = strcmp(P.artifacts,P.root);
-
-P.qcDir = fullfile(P.artifacts,'QC');
-if P.isFlat
-    P.qcDir = P.artifacts;      % nothing to separate from in a flat folder
-end
 
 % FISSA output belongs to the ROI set that produced it, so it is per-run.
 % A NAMED RUN always owns its own FISSA output. Falling back to the shared
@@ -113,7 +99,7 @@ P.moCorrTifs  = fullfile(P.artifacts,[animal '_moCorr_Tifs_Params.mat']);
 P.tifFileList = fullfile(P.artifacts,[animal '_tifFileList.mat']);
 
 if opts.create
-    for f = {P.artifacts,P.qcDir,P.fissaDir}
+    for f = {P.artifacts,P.fissaDir}
         if ~isfolder(f{1}); mkdir(f{1}); end
     end
 end

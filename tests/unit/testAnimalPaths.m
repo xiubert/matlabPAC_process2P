@@ -14,7 +14,6 @@ mkdir(fullfile(dp,'NoRMCorred'));
 P = animalPaths(dp);
 assert(P.isFlat,'no run should resolve flat');
 assert(strcmp(P.artifacts,dp));
-assert(strcmp(P.qcDir,dp),'flat layout has nowhere separate to put QC');
 assert(strcmp(P.fissaDir,fullfile(dp,'NoRMCorred','FISSAoutput')), ...
     'a legacy folder must still find FISSA output under NoRMCorred/');
 assert(strcmp(P.tifFileList,fullfile(dp,'TO9999_tifFileList.mat')));
@@ -24,7 +23,6 @@ R = animalPaths(dp,'run','cellpose_20260903');
 assert(~R.isFlat);
 assert(strcmp(R.artifacts,fullfile(dp,'analysis','cellpose_20260903')));
 assert(strcmp(R.tifFileList,fullfile(R.artifacts,'TO9999_tifFileList.mat')));
-assert(strcmp(R.qcDir,fullfile(R.artifacts,'QC')));
 
 % CASE 3: SHARED artifacts do not move. The tif inventory, the condition
 % split and NoRMCorred/ describe the acquisition and the motion correction,
@@ -46,20 +44,15 @@ assert(strcmp(R2.fissaDir,fullfile(R2.artifacts,'FISSAoutput')), ...
 % CASE 5: two runs collide nowhere
 A = animalPaths(dp,'run','handdrawn_20260903');
 B = animalPaths(dp,'run','cellpose_20260903');
-for f = {'artifacts','tifFileList','moCorrTifs','fissaDir','qcDir'}
+for f = {'artifacts','tifFileList','moCorrTifs','fissaDir'}
     assert(~strcmp(A.(f{1}),B.(f{1})), ...
         'two runs share %s -- they would overwrite each other',f{1});
 end
 
-% CASE 6: an explicit artifactDir wins and names itself
-E = animalPaths(dp,'artifactDir',fullfile(tmp,'elsewhere','myrun'));
-assert(strcmp(E.artifacts,fullfile(tmp,'elsewhere','myrun')));
-assert(strcmp(E.run,'myrun'),'run name should fall back to the folder name');
-
 % CASE 7: 'create' makes the folders, and not creating is the default
 assert(~isfolder(R.artifacts),'animalPaths must not create folders by default');
 C = animalPaths(dp,'run','made','create',true);
-assert(isfolder(C.artifacts) && isfolder(C.qcDir) && isfolder(C.fissaDir));
+assert(isfolder(C.artifacts) && isfolder(C.fissaDir));
 
 % CASE 8: a run name that could escape the folder or break a glob is refused
 for bad = {'../escape','a/b','a:b','a*b'}
