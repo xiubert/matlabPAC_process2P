@@ -58,6 +58,10 @@ function out = cellposeROIset(dataPath,animal,tifList,tifFiles,opts)
 %                     automatic sizing fails outright on a smoothed mean.
 %     'saveMeanTif'   write NoRMCorred/<animal>_cellposeMean.tif for QC.
 %                     Default true.
+%     'saveROIimage'  write <animal>_ROIoverlay_<cond>.png per condition -- the
+%                     ROIs drawn over the image they came from, coloured by
+%                     detection count. A headless run has no moment where a
+%                     human sees the ROIs, so it leaves one behind. Default true.
 %     'verbose'       Default true.
 %
 %   Output (struct)
@@ -88,6 +92,7 @@ arguments
     opts.refCond      (1,:) char = ''
     opts.cellposeArgs       cell = {'diameter',15,'cellprobThreshold',-1}
     opts.saveMeanTif  (1,1) logical = true
+    opts.saveROIimage (1,1) logical = true
     opts.verbose      (1,1) logical = true
 end
 
@@ -292,6 +297,17 @@ for c = 1:numel(conds)
     if opts.verbose
         fprintf('  %-24s %3d ROIs -> %s\n',cond,numel(roiK),...
             [animal '_moCorrROI_' cond '.mat']);
+    end
+end
+
+%--- reviewable overlay ---------------------------------------------------
+%the whole point of a headless run is that nobody watched it draw these
+if opts.saveROIimage
+    try
+        plotROIoverlay(dataPath,animal,'meanImg',sessionMean);
+    catch ME
+        warning('cellposeROIset:overlayFailed',...
+            'Could not write the ROI overlay (%s); the ROI files are fine.',ME.message);
     end
 end
 
