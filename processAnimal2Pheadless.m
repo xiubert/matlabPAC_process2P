@@ -689,7 +689,8 @@ function r = stage11(cfg,~)
 if ~cfg.runStimFamilies
     r = struct(); return
 end
-args = {'showPlots',false,'scriptVars',cfg.stimScriptVars,'verbose',cfg.verbose};
+args = {'showPlots',false,'scriptVars',cfg.stimScriptVars, ...
+    'runLabel',cfg.runLabel,'verbose',cfg.verbose};
 if ~cfg.runFRAmap
     fams = stimGroupSpec();
     args = [args,{'families',fams(~strcmp(fams,'FRA'))}];

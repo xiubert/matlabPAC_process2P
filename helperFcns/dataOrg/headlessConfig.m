@@ -83,6 +83,11 @@ function cfg = headlessConfig(dataPath,varargin)
 %                     output already exists.
 %     'fissaScaleFactor'  neuropil subtraction scale. Default 0.8.
 %
+%   Name-value -- provenance
+%     'runLabel'      name of this analysis run. Stamped into every processed
+%                     table (see processAnimalStimFamilies), so aggregation can
+%                     refuse a table left behind by an earlier run. Default ''.
+%
 %   Name-value -- stimulus alignment (§10)
 %     'excludeNeg'    forwarded to stimParam2ROI -> anmlROIbyStimTable, which
 %                     screens multi-pulse families (BPN) for movement
@@ -142,6 +147,7 @@ addParameter(p,'normcorre',struct(),@isstruct);
 addParameter(p,'roi',struct(),@isstruct);
 addParameter(p,'fissaCmd','default',@(x)ischar(x)||isstring(x));
 addParameter(p,'fissaScaleFactor',0.8,@(x)isnumeric(x)&&isscalar(x));
+addParameter(p,'runLabel','',@(x) ischar(x)||isstring(x));
 addParameter(p,'excludeNeg',true,@islogical);
 addParameter(p,'runStimFamilies',true,@islogical);
 addParameter(p,'runFRAmap',true,@islogical);
@@ -175,6 +181,7 @@ else
     cfg.tifPattern = char(cfg.tifPattern);
 end
 cfg.treatmentName = char(cfg.treatmentName);
+cfg.runLabel      = char(cfg.runLabel);
 
 %--- stages ---------------------------------------------------------------
 st = cfg.stages(:)';
