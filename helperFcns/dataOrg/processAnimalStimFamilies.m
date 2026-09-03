@@ -41,6 +41,14 @@ function out = processAnimalStimFamilies(dataPath,varargin)
 %                   from the workspace. e.g.
 %                     struct('PTfreqSelect',6484)
 %                   for an animal recorded with several pure-tone frequencies.
+%     'runLabel'  - name of the analysis run. When given, a runInfo struct is
+%                   appended to every processed table this call writes,
+%                   recording the run, the ROI set it came from (count and
+%                   whether those ROIs were hand-drawn or segmented), the time
+%                   and the repo SHA. aggregateStimGroup reads it, so a table
+%                   left behind by an earlier run can be caught instead of
+%                   being aggregated as if it were current. Default '' = no
+%                   stamp.
 %     'verbose'   - print progress. Default true.
 %
 %   Output (struct array), one element per family considered:
@@ -68,6 +76,7 @@ addParameter(p,'families',{},@(x) isempty(x)||iscellstr(x)||isstring(x)); %#ok<I
 addParameter(p,'showPlots',false,@islogical);
 addParameter(p,'overwrite',true,@islogical);
 addParameter(p,'scriptVars',struct(),@isstruct);
+addParameter(p,'runLabel','',@(x) ischar(x)||isstring(x));
 addParameter(p,'verbose',true,@islogical);
 parse(p,dataPath,varargin{:});
 dataPath  = char(p.Results.dataPath);
@@ -75,6 +84,7 @@ families  = p.Results.families;
 showPlots = p.Results.showPlots;
 overwrite = p.Results.overwrite;
 scriptVars= p.Results.scriptVars;
+runLabel  = char(p.Results.runLabel);
 verbose   = p.Results.verbose;
 
 if ~isfolder(dataPath)
@@ -139,6 +149,8 @@ for i = 1:numel(families)
         rec.ok = isfile(proc);
         if ~rec.ok
             rec.reason = sprintf('%s ran but wrote no %s', spec.processScript, proc);
+        elseif ~isempty(runLabel)
+            stampRunInfo(proc, runLabel, dataPath, animal, spec.family);
         end
     catch ME
         rec.reason = sprintf('%s failed: %s', spec.processScript, ME.message);
@@ -203,4 +215,52 @@ if isempty(scriptPath)
         '%s is not on the MATLAB path.', scriptName);
 end
 run(scriptPath);
+end
+
+
+function stampRunInfo(procFile, runLabel, dataPath, animal, family)
+% Record which analysis run wrote this table, and off which ROI set.
+%
+% Every run writes the same filenames into the same animal folder, so a family
+% that fails leaves the PREVIOUS run's table in place -- and aggregation,
+% having no way to tell, treats it as current. On the TOMT cohort that quietly
+% produced a group file mixing hand-drawn and segmented ROIs. This stamp is
+% what lets aggregateStimGroup('requireRun',...) refuse that.
+info = struct();
+info.runLabel  = char(runLabel);
+info.family    = char(family);
+info.animal    = char(animal);
+info.dataPath  = char(dataPath);
+info.when      = string(datetime('now','Format','uuuu-MM-dd HH:mm:ss'));
+info.roiSource = 'unknown';
+info.nROI      = NaN;
+info.roiFile   = '';
+info.repoSHA   = "";
+
+d = dir(fullfile(dataPath,[animal '_moCorrROI_*.mat']));
+if ~isempty(d)
+    info.roiFile = d(1).name;
+    try
+        S = load(fullfile(d(1).folder,d(1).name));
+        if isfield(S,'moCorROI'); info.nROI = numel(S.moCorROI); end
+        if isfield(S,'roiParams') && isfield(S.roiParams,'source')
+            info.roiSource = char(S.roiParams.source);
+        elseif isfield(S,'cellposeParams')
+            info.roiSource = 'cellpose';
+        else
+            info.roiSource = 'handDrawn';
+        end
+    catch
+    end
+end
+
+try
+    here = fileparts(fileparts(fileparts(mfilename('fullpath'))));
+    [st,out] = system(sprintf('git -C "%s" rev-parse --short HEAD 2>/dev/null',here));
+    if st == 0; info.repoSHA = string(strtrim(out)); end
+catch
+end
+
+runInfo = info; %#ok<NASGU>
+save(procFile,'runInfo','-append');
 end

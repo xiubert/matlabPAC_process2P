@@ -58,6 +58,15 @@ baselineSec      = 1;   % pre-onset baseline (s) for dFF + onset alignment
 pkBPNsigSD       = 2;
 nFramesPostPulse = 2;
 
+% Onsets to KEEP, in seconds. [] means "keep every onset present", which is the
+% normal case: rows that differ only in onset are then merged by
+% combineDiffOnset below. Set this when an onset was not actually delivered --
+% e.g. TO0001, whose onset = 2 s sounds were never triggered, so merging them
+% in would average real responses with silence. Set it here, or define
+% BPNsOnsetSelect in the workspace before running (which is how
+% processAnimalStimFamilies passes it in).
+if ~exist('BPNsOnsetSelect','var'); BPNsOnsetSelect = []; end
+
 %% Per-row time vectors and onset-normalized dF/F
 anmlROIbyStim.t_total = rowfun(@(F,fr) {(1:size(F,2))/fr}, ...
     anmlROIbyStim,'InputVariables',{'SCALEDfissaFroi','frameRate'}, ...
@@ -74,7 +83,27 @@ anmlROIbyStim.dFF = rowfun(@(F,t,onset) ...
     anmlROIbyStim,'InputVariables',{'SCALEDfissaFroi','t_total','BPNsOnset'}, ...
     'ExtractCellContents',true,'OutputFormat','uniform');
 
+%% Drop onsets that were never delivered
+if ~isempty(BPNsOnsetSelect)
+    keepOnset = ismember(anmlROIbyStim.BPNsOnset, BPNsOnsetSelect);
+    if ~any(keepOnset)
+        error('processBPN2P:noSuchOnset', ...
+            'BPNsOnsetSelect = %s s matches no row in %s. Present: %s s.', ...
+            mat2str(BPNsOnsetSelect), [animal '_anmlROI_BPNstimTable_raw.mat'], ...
+            mat2str(unique(anmlROIbyStim.BPNsOnset)'));
+    end
+    if ~all(keepOnset)
+        fprintf(['processBPN2P: keeping onset(s) %s s, dropping %d of %d rows ' ...
+            '(onsets present: %s s)\n'], mat2str(BPNsOnsetSelect), ...
+            nnz(~keepOnset), numel(keepOnset), ...
+            mat2str(unique(anmlROIbyStim.BPNsOnset)'));
+        anmlROIbyStim = anmlROIbyStim(keepOnset,:);
+    end
+end
+
 %% Merge same-sound, different-onset rows (also aligns raw F cells)
+% With a single onset left this is a no-op on the stim grouping; it still
+% performs the per-row onset alignment the rest of the script expects.
 anmlROIbyStim = combineDiffOnset(anmlROIbyStim, baselineSec);
 
 %% Trial-average dF/F per row

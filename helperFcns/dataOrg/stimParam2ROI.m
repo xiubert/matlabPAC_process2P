@@ -1,4 +1,4 @@
-function [pulseLegend2P,stimGroupIDX,outputTables] = stimParam2ROI(dataPath)
+function [pulseLegend2P,stimGroupIDX,outputTables] = stimParam2ROI(dataPath,opts)
 % stimParam2ROI  Organize one animal's 2P traces by ROI x stim parameters.
 %
 %   [pulseLegend2P,stimGroupIDX,outputTables] = stimParam2ROI(dataPath)
@@ -16,6 +16,14 @@ function [pulseLegend2P,stimGroupIDX,outputTables] = stimParam2ROI(dataPath)
 %
 %   Layout of resulting per-stim tables: one row per (ROI, unique-stim)
 %   pair, so all repetitions of a given stim on a given ROI share a row.
+%
+%   Inputs:
+%   Name-value:
+%     excludeNeg - forwarded to anmlROIbyStimTable, which screens multi-pulse
+%                  families (BPN) for movement artifacts and blanks failing
+%                  epochs. Default true, the same default that function has.
+%                  Pass false to build the tables with no screening, e.g. to
+%                  measure what the screening removes.
 %
 %   Inputs:
 %     dataPath - absolute path to an animal data folder. The animal ID
@@ -69,7 +77,14 @@ function [pulseLegend2P,stimGroupIDX,outputTables] = stimParam2ROI(dataPath)
 %       captured error trace is preserved in-source above the spont
 %       block as a regression hint.
 
+arguments
+    dataPath (1,:) char
+    opts.excludeNeg (1,1) logical = true   % movement/dropout screening in
+                                           % anmlROIbyStimTable; see its header
+end
+
 outputTables = cell(0);
+
 animal = regexp(dataPath,'[A-Z]{2}\d{4}','match','once');
 
 % Use dir() instead of ls() for cross-platform filename listing: on
@@ -151,7 +166,7 @@ if sum(stimGroupIDX.ptStimIDX.tifFileList)>1
     [anmlROIbyStim,stimTable] = anmlROIbyStimTable(animal,...
         tifFileList.stim(stimGroupIDX.ptStimIDX.tifFileList),...
         resolveROIset(tifFileList.stim(stimGroupIDX.ptStimIDX.tifFileList),roiSets,roiTifs,roiCounts),...
-        tifStimParamTable);
+        tifStimParamTable,opts.excludeNeg);
     outputTables{end+1} = 'tifStimParamTable';
     outputTables{end+1} = tifStimParamTable;
     outputTables{end+1} = 'anmlROIbyStim';
@@ -190,7 +205,7 @@ if sum(stimGroupIDX.BPNStimIDX.tifFileList)>1
     [anmlROIbyStim,stimTable] = anmlROIbyStimTable(animal,...
         tifFileList.stim(stimGroupIDX.BPNStimIDX.tifFileList),...
         resolveROIset(tifFileList.stim(stimGroupIDX.BPNStimIDX.tifFileList),roiSets,roiTifs,roiCounts),...
-        tifStimParamTable);
+        tifStimParamTable,opts.excludeNeg);
     outputTables{end+1} = 'tifStimParamTable';
     outputTables{end+1} = tifStimParamTable;
     outputTables{end+1} = 'anmlROIbyStim';
@@ -246,7 +261,7 @@ if sum(stimGroupIDX.spontStimIDX.tifFileList)>1
     [anmlROIbyStim,stimTable] = anmlROIbyStimTable(animal,...
         tifFileList.stim(stimGroupIDX.spontStimIDX.tifFileList),...
         resolveROIset(tifFileList.stim(stimGroupIDX.spontStimIDX.tifFileList),roiSets,roiTifs,roiCounts),...
-        tifStimParamTable);
+        tifStimParamTable,opts.excludeNeg);
     outputTables{end+1} = 'tifStimParamTable';
     outputTables{end+1} = tifStimParamTable;
     outputTables{end+1} = 'anmlROIbyStim';
@@ -283,7 +298,7 @@ if sum(stimGroupIDX.contrastChangeIDX.tifFileList)>1
     [anmlROIdContrast,dContrastTable] = anmlROIbyStimTable(animal,...
         tifFileList.stim(stimGroupIDX.contrastChangeIDX.tifFileList),...
         resolveROIset(tifFileList.stim(stimGroupIDX.contrastChangeIDX.tifFileList),roiSets,roiTifs,roiCounts),...
-        dContrastTifParamTable);
+        dContrastTifParamTable,opts.excludeNeg);
     
     outputTables{end+1} = 'dContrastTifParamTable';
     outputTables{end+1} = dContrastTifParamTable;
