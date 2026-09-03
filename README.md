@@ -2,6 +2,13 @@
 
 MATLAB pipeline for processing two-photon calcium imaging data, from raw ScanImage `.tif` files through motion correction, neuropil subtraction, and cohort-level analysis.
 
+ROIs come either from **you, drawing them** (`processAnimal2P`) or from
+**Cellpose, unattended** (`processAnimal2Pheadless`). Both feed the same
+downstream pipeline.
+
+📖 **[usage.md](usage.md) — what to type, in what order, for either path.**
+This README is the reference for what each piece *does*.
+
 ---
 
 ## Pipeline at a glance
@@ -98,6 +105,8 @@ Quick look at average cell responses across a set of tifs without running the fu
 
 ### 1. Per-animal processing — `processAnimal2P.m`
 
+*Step-by-step instructions: [usage.md § Path A](usage.md#path-a--manual-rois).*
+
 Full processing pipeline for a single animal session. Edit `dataPath` at the top and run section by section.
 
 | Step | Section | What it does |
@@ -163,6 +172,8 @@ The path runs through `processAnimal2P.m` with **no manual intervention**, assum
 ---
 
 ### 1c. Headless run — `processAnimal2Pheadless.m`
+
+*Step-by-step instructions: [usage.md § Path B](usage.md#path-b--auto-rois-headless).*
 
 A **second entry point** that runs the same stages unattended: every dialog
 becomes a config field, and `TIFcatROIgui` (§4–5) is replaced by Cellpose
@@ -316,6 +327,8 @@ The table exists so FRA can use the **same generic group machinery** as BPN and 
 ---
 
 ### 3. Condition groups — `aggregateStimGroup` + the group plotters
+
+*Step-by-step instructions: [usage.md § After either path](usage.md#after-either-path--condition-groups). Note `requireRun` — see [usage.md § Provenance](usage.md#provenance).*
 
 The path for comparing **treatment/condition groups** (Group A vs B vs …).
 

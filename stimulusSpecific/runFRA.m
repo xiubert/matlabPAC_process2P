@@ -101,7 +101,14 @@ FRAout = FRAmap(tifFileList,opts.pkPTsigSD,opts.nFramesPostPulse,opts.FsourceStr
 out.dataPath = dataPath;
 out.FRAmap   = FRAout;
 save(outFile,'-struct','out','-v7.3');
-fprintf('runFRA: wrote %s (%d cells)\n',outFile,size(FRAout.uSigPkResp,1));
+%uSigPkResp is nDB x nFreq, not per cell -- the per-cell array is
+%CellSigPkLinDBfreq, whose rows are cells
+if isfield(FRAout,'CellSigPkLinDBfreq')
+    nCell = size(FRAout.CellSigPkLinDBfreq,1);
+else
+    nCell = NaN;
+end
+fprintf('runFRA: wrote %s (%d cells)\n',outFile,nCell);
 
 if opts.writeTable
     if exist('FRAmap2table','file') ~= 2
