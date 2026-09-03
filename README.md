@@ -9,7 +9,8 @@ MATLAB pipeline for processing two-photon calcium imaging data, from raw ScanIma
 ```
  RAW ACQUISITION                      per animal, once each
  ───────────────                      ─────────────────────
- *.tif  *_Pulses.mat                  processAnimal2P.m
+ *.tif  *_Pulses.mat                  processAnimal2P.m          (interactive)
+                                      processAnimal2Pheadless.m  (unattended; §1c)
         │                               §1  tif inventory        → _tifFileLegend.mat
         │                               §2  condition split      → _tifCondSplitLegend.mat
         ▼                               §3  NoRMCorre            → NoRMCorred/*.tif
@@ -51,7 +52,7 @@ MATLAB pipeline for processing two-photon calcium imaging data, from raw ScanIma
 | `aggregateStimGroup` | `<animal>_anmlROI_<Fam>stimTable.mat` for every animal in the manifest (`_anmlROI_FRAtable.mat` for FRA) | §11 |
 | group plotters | `<Fam>_Group<g>.mat` | `aggregateStimGroup` |
 
-**To resume at §10** an animal needs exactly three things: `_tifFileList.mat`, `_moCorrROI_*.mat`, and its `_Pulses.mat` files. `NoRMCorred/` and `FISSAoutput/` are *inputs to* §8–9 and are not read again afterwards — the fluorescence traces they produced already live inside `_tifFileList.mat`. Copying an animal without `NoRMCorred/` is therefore fine **if** `_tifFileList.mat` and `_moCorrROI_*.mat` came with it; copying only tifs and `_Pulses.mat` is not, because §4–5 (ROI drawing) is interactive and §8 (FISSA) is a Python step.
+**To resume at §10** an animal needs exactly three things: `_tifFileList.mat`, `_moCorrROI_*.mat`, and its `_Pulses.mat` files. `NoRMCorred/` and `FISSAoutput/` are *inputs to* §8–9 and are not read again afterwards — the fluorescence traces they produced already live inside `_tifFileList.mat`. Copying an animal without `NoRMCorred/` is therefore fine **if** `_tifFileList.mat` and `_moCorrROI_*.mat` came with it; copying only tifs and `_Pulses.mat` is not, because §4–5 (ROI drawing) is interactive and §8 (FISSA) is a Python step — unless you run the [headless path](#1c-headless-run--processanimal2pheadlessm), which automates both.
 
 ### Validate and stamp
 
@@ -158,6 +159,105 @@ The path runs through `processAnimal2P.m` with **no manual intervention**, assum
 9. **§10** `stimParam2ROI` builds the per-family tables. Its spont branch resolves the **256×128 ROI set** (by trace row-count, via `resolveROIset`) and produces `<animal>_anmlROI_SpontstimTable.mat`, whose `anmlROIbyStim` rows hold **10 Hz traces from the fixed (remapped) ROIs**, ready for further spontaneous-activity analysis.
 
 **ROI-reuse helpers** (`helperFcns/ROI/`): `remapROItoAcq.m` (geometry-validated centered crop of a `moCorROI` struct; regenerates `mask` for raw-F and `ROIcurveOrderedXY` for FISSA, preserving IDs) and `remapROIfile.m` (driver: load source ROIs + read src/tgt tif headers + remap + save the pipeline bundle). FISSA grouping: `mergeFISSAgroups.m` + the grouped `FISSAviaMatlab_prePostTreatment.py`. Tests: `tests/testRemapROItoAcq_centeredCrop.m`, `tests/testFISSAgrouping.m`, `tests/testAA0072_pipeline.m`.
+
+---
+
+### 1c. Headless run — `processAnimal2Pheadless.m`
+
+A **second entry point** that runs the same stages unattended: every dialog
+becomes a config field, and `TIFcatROIgui` (§4–5) is replaced by Cellpose
+segmentation. `processAnimal2P.m` remains the path for hand-drawn ROIs and for
+anything you want to watch — this does not replace it, and both write the same
+artefacts, so you can start an animal in one and finish it in the other.
+
+```matlab
+% one animal, everything
+out = processAnimal2Pheadless('/data/TO0003');
+
+% a cohort, resuming past motion correction
+for a = ["TO0006","TO0007"]
+    processAnimal2Pheadless(fullfile(root,a), 'stages',[4 11], ...
+        'treatmentName','ZX1', 'preTifs','_0003[4-9]_');
+end
+```
+
+Stage numbers match `processAnimal2P`'s sections (5 is folded into 4). **Each
+stage is skipped when its artefact already exists** unless `'overwrite',true`,
+so re-running to re-tune segmentation never repeats motion correction;
+`'stages'` takes a subset or a `[from to]` range.
+
+#### Every dialog, as a config field
+
+`headlessConfig` documents all of them; the ones you are most likely to set:
+
+| Interactive prompt | Config field | Default |
+|---|---|---|
+| `uigetdir` / animal ID | `dataPath`, `animal` | animal from the folder name |
+| treatment name + pre-tif picker | `treatmentName`, `preTifs` | `''` → every tif `'none'` |
+| FRA map tif picker | `mapTifs` | `'auto'` — see below |
+| alternate-zoom prompt | `altZoomPolicy` | `'drop'` (the interactive default) |
+| treatment filters | `condFilters` | derived from the treatments present |
+| functional channel | `funcChan` | `2` |
+| **ROI drawing** | `roi` (→ `cellposeROIset`) | consensus, `minVotes` 2, `dilatePx` 2 |
+| FISSA scale factor | `fissaScaleFactor` | `0.8` |
+| — (manual Python step) | `fissaCmd` | runs the repo script in conda env `env_fissa` |
+
+`preTifs` and `mapTifs` accept **indices, a logical mask, file names, or a
+regular expression**. A selector that matches *nothing* is an error, not an
+empty group — a typo'd regexp would otherwise relabel a whole session as
+post-treatment silently.
+
+**`mapTifs` defaults to reading the pulse files**, not file size: a tif is an
+FRA map when its `pulseSet` contains `'map'` (case-insensitive), the same
+`contains(pulseSet,…)` idiom `stimParam2ROI` uses for BPN, PTinContrast and
+spont. The `'bytes'` rule is available as a fallback for animals with no pulse
+files, but it is only the *hint* the interactive dialog prints before a human
+chooses: on TO0003 it flags all 8 real map tifs **and 5 stim tifs**, because
+the 85.6 MB BPN tifs sit just under the 94.2 MB maps — which silently drops
+the whole BPN family from the run.
+
+#### ROI detection — `cellposeROIset`
+
+Two things have to be true of the result: the masks must be cells, and an ID
+must mean the *same* cell in every treatment condition. A human keeps the
+second true by eye; a segmenter cannot, so one shared ROI set is segmented in a
+common reference frame and placed into each condition
+(`registerConditionMeans`, translation only, refusing a shift above
+NoRMCorre's own `max_shift`). §6 `intersectROIfiles` then becomes an invariant
+check rather than the thing doing the matching.
+
+Detection is a **vote across per-tif segmentations** (`consensusROIsets`), not
+one pass over the session mean. Cellpose-SAM's detection here depends on the
+granular noise texture of a single tif's projection; averaging tifs removes it
+and detection collapses non-monotonically (TO0003: 1 tif → 33 cells, 2 → 19,
+4 → 0, all 29 → 0), while each individual tif agrees well with hand-drawn ROIs.
+Voting keeps the regime where the segmenter works. `minVotes` spans the obvious
+rules — `1` is the union, `numel(tifs)` the strict inner join (which keeps
+nothing here, being governed by the worst tif) — and every cell carries a
+**detection count**, which a single pass cannot provide.
+
+Calibrated against TO0003's 18 hand-drawn ROIs: at `minVotes` 2 and
+`dilatePx` 2 it recovers **18/18** at median IoU 0.71 with mask areas 0.82× the
+hand-drawn convention, finding 102 ROIs in total. `diameter` must be set
+explicitly (default 15) — cpsam's automatic sizing fails outright on a smoothed
+mean. `adhoc/calibrateCellposeROI.m` re-runs that calibration on any animal
+that has a hand-drawn set.
+
+Cellpose runs **locally by default** in conda env `suite2p`
+(`~/.cellpose/models/cpsam`); `cellposeSegment`'s `'backend','podman-exec'`
+targets a container instead, for machines where that is the only cellpose.
+
+#### Known limits
+
+- The multi-condition registration path has unit coverage with synthetic
+  shifts but has not yet run on a real pre/post animal — run the first one with
+  `'verbose',true` and sanity-check the reported shift.
+- `stimParam2ROI` and the `process*` scripts re-derive the animal ID from the
+  **folder name**, so a folder that does not contain it fails at stage 10;
+  `headlessConfig` warns about this up front.
+- `type` on a Cellpose ROI is `'cellpose'`, which `TIFcatROIgui`'s load path
+  does not yet understand — you cannot currently open a headless ROI set in the
+  GUI for manual touch-up.
 
 ---
 
@@ -317,7 +417,8 @@ For **additional CGC figures** this path does not produce — the FRA/best-frequ
 | Dependency | Language | Purpose |
 |------------|----------|---------|
 | [NoRMCorre](https://github.com/flatironinstitute/NoRMCorre) | MATLAB | Non-rigid motion correction |
-| [FISSA](https://github.com/rochefort-lab/fissa) | Python | Neuropil signal separation |
+| [FISSA](https://github.com/rochefort-lab/fissa) | Python | Neuropil signal separation (conda env `env_fissa`; needs `imagecodecs` for pre-fix LZW tifs, see §1a) |
+| [Cellpose](https://github.com/MouseLand/cellpose) (`cpsam`) | Python | ROI segmentation for the headless path only (conda env `suite2p`, model at `~/.cellpose/models/cpsam`) |
 | Ephus `@signalObject` library (`ephus_library`) | MATLAB | Reading `.signal` files in `inspectSignalObject` |
 | ScanImage | — | Acquisition; tif files contain SI headers parsed throughout |
 
@@ -342,6 +443,8 @@ stimulusSpecific/
   plotCellTrials.m    — every repetition of one cell, for chasing outliers
   processRLF.m        — interactive entry point for the BPN group plots
   processFRAgroup.m   — interactive entry point for the FRA group plots
+  runFRA.m            — non-interactive FRA for one animal (function form of
+                        processFRA; used to recompute FRA on its own)
   extraCGC/           — the cohort-table path (see the appendix):
                         compileCohortData.m, plotCohortData.m
 
@@ -365,8 +468,17 @@ helperFcns/
                         builders (stimParam2ROI, combineDiffOnset); condition-group
                         aggregation (stimGroupSpec, aggregateStimGroup,
                         validateStimGroup, loadStimGroup); per-animal
-                        per-family driver (processAnimalStimFamilies)
-  ROI/                — ROI mask ↔ polygon conversion, raw F extraction from masks
+                        per-family driver (processAnimalStimFamilies);
+                        headless run configuration (headlessConfig)
+  ROI/                — ROI mask ↔ polygon conversion, raw F extraction from masks;
+                        256×128 ROI reuse (remapROItoAcq, remapROIfile);
+                        and the headless detection path — Cellpose CLI wrapper
+                        (cellposeSegment), label image → moCorROI
+                        (labelImg2moCorROI), per-tif vote (consensusROIsets),
+                        cross-condition alignment (registerConditionMeans),
+                        the orchestrator (cellposeROIset), plus IoU comparison
+                        of two ROI sets (compareROIsets) and streamed mean
+                        projection (condMeanImg)
   plotting/           — SEM shaded plots (fillSEMplot), regression plots (regPlot),
                         paper-style formatting, figure export
   sound/              — Ephus .signal file inspection (inspectSignalObject)
