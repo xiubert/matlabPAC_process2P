@@ -101,6 +101,9 @@ variables.
 |---|---|
 | `testResolveROIset` | membership-first ROI-set resolution when two conditions share an ROI count |
 | `testFISSAgrouping` | per-ROI-count FISSA merge; a session mixing 256×256 and 256×128 keeps each tif's own group |
+| `testLabelImg2moCorROI` | segmentation label image → `moCorROI`: the field set `TIFcatROIgui` writes, closed **traced** outlines (an angular sort folds on a concave mask, and that polygon is what FISSA turns into a neuropil annulus), row-major ID order, and the area/edge/dilate QC filters |
+| `testConsensusROIsets` | voting across per-tif ROI sets: `minVotes` = 1 is the union and = nSets the strict inner join, per-cell detection counts, no merging of adjacent cells, and errors for an impossible threshold or mismatched frame sizes |
+| `testHeadlessConfig` | every `processAnimal2Pheadless` selector form (indices, names, regexp, logical mask, `'auto'` bytes heuristic), stage ranges, the calibrated ROI defaults, and — the point of the test — that a selector matching **nothing** errors instead of silently relabelling the whole session |
 
 **integration/**
 

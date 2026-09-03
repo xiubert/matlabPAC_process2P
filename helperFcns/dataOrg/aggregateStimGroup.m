@@ -27,6 +27,16 @@ function info = aggregateStimGroup(manifest,varargin)
 %                              used instead of cohortRoot/animals resolution
 %
 %   Name/Value:
+%     'requireRun' - name of the analysis run these tables must come from.
+%                 Every per-animal table carries a runInfo stamp when
+%                 processAnimalStimFamilies wrote it with a runLabel; this
+%                 errors on any animal whose stamp names a different run, or
+%                 has no stamp at all. Because every run writes the same
+%                 filenames into the same folder, a family that failed leaves
+%                 the previous run's table in place, and without this check it
+%                 is aggregated as if it were current -- which silently mixed
+%                 hand-drawn and segmented ROIs in one group file. Default ''
+%                 = no check.
 %     'dryRun'  - resolve, load and validate but write nothing. Default false.
 %     'verbose' - print progress. Default true.
 %     'refVars' - canonical column order. Default: the first animal's order.
@@ -70,6 +80,7 @@ function info = aggregateStimGroup(manifest,varargin)
 p = inputParser;
 addRequired(p,'manifest',@(x) isstruct(x) || ischar(x) || isstring(x));
 addParameter(p,'dryRun',false,@islogical);
+addParameter(p,'requireRun','',@(x) ischar(x)||isstring(x));
 addParameter(p,'verbose',true,@islogical);
 addParameter(p,'refVars',{},@(x) isempty(x) || iscellstr(x) || isstring(x)); %#ok<ISCLSTR>
 addParameter(p,'outFile','',@(x) ischar(x)||isstring(x));
@@ -77,6 +88,7 @@ addParameter(p,'trimTraces',true,@islogical);
 parse(p,manifest,varargin{:});
 dryRun  = p.Results.dryRun;
 verbose = p.Results.verbose;
+requireRun = char(p.Results.requireRun);
 refVars = p.Results.refVars;
 outFile = char(p.Results.outFile);
 trimTraces = p.Results.trimTraces;
@@ -104,6 +116,7 @@ end
 per = cell(numel(animals),1);
 srcAnimal = strings(0,1); srcFile = strings(0,1);
 srcBytes = zeros(0,1); srcMod = strings(0,1);
+srcRun = strings(0,1); srcRoiSource = strings(0,1);
 
 for a = 1:numel(animals)
     f = files{a};
@@ -137,6 +150,36 @@ for a = 1:numel(animals)
             f, spec.varname, manifest.family);
     end
     Ta = S.(spec.varname);
+
+    % Which analysis run wrote this table? Every run writes the same filenames
+    % into the same animal folder, so a family that failed leaves the previous
+    % run's table sitting there and nothing downstream can tell. Checking the
+    % stamp is what stops a group silently mixing two analyses.
+    ri = struct('runLabel','<none>','roiSource','unknown','nROI',NaN);
+    Sri = load(f);
+    if isfield(Sri,'runInfo'); ri = Sri.runInfo; end
+    clear Sri
+    srcRun(end+1,1)       = string(getfielddef(ri,'runLabel','<none>')); %#ok<AGROW>
+    srcRoiSource(end+1,1) = string(getfielddef(ri,'roiSource','unknown')); %#ok<AGROW>
+    if ~isempty(requireRun)
+        if ~isfield(ri,'runLabel') || isempty(ri.runLabel) || ...
+                strcmp(ri.runLabel,'<none>')
+            error('aggregateStimGroup:noRunStamp', ...
+                ['%s carries no runInfo stamp, so it cannot be shown to come ' ...
+                 'from run "%s".\n    %s\nRe-run this animal for that run ' ...
+                 '(processAnimalStimFamilies with runLabel set).'], ...
+                animals(a), requireRun, f);
+        end
+        if ~strcmp(char(ri.runLabel), requireRun)
+            error('aggregateStimGroup:wrongRun', ...
+                ['%s was written by run "%s", not "%s" -- its family most ' ...
+                 'likely failed in this run and the previous table was left ' ...
+                 'in place.\n    %s\nROI source on file: %s (%g ROIs).'], ...
+                animals(a), char(ri.runLabel), requireRun, f, ...
+                char(getfielddef(ri,'roiSource','unknown')), ...
+                getfielddef(ri,'nROI',NaN));
+        end
+    end
 
     rep = validateStimGroup(Ta, manifest.family, 'verbose',false);
     if ~rep.ok
@@ -237,6 +280,8 @@ info.timeAxis   = T.(spec.timeVar){1};
 info.traceVars  = spec.traceVars;
 info.cellAvgVar = spec.cellAvgVar;
 info.convention = spec.convention;
+info.sourceRuns  = table(srcAnimal,srcRun,srcRoiSource, ...
+    'VariableNames',{'animal','runLabel','roiSource'});
 info.sourceFiles = table(srcAnimal,srcFile,srcBytes,srcMod, ...
     'VariableNames',{'animal','file','bytes','modified'});
 info.validation = rep;
@@ -333,4 +378,8 @@ try
     if st == 0; sha = string(strtrim(out)); end
 catch
 end
+end
+
+function v = getfielddef(s,f,d)
+if isstruct(s) && isfield(s,f) && ~isempty(s.(f)); v = s.(f); else; v = d; end
 end
