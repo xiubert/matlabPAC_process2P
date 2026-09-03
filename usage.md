@@ -11,6 +11,7 @@ guide: what to type, in what order, and what to check. For what each function
 | needs a display | yes | no — runs under `matlab -batch` |
 | cells found | what you draw | ~3× more on the TOMT cohort, at the same response quality |
 | ROI review | you saw them as you drew | `<animal>_ROIoverlay_<cond>.png`, written automatically |
+| where artifacts go | `analysis/<run>/` — set `runName` at the top of the script | `analysis/<run>/` — set `'run'`, or let it be derived |
 | when to use it | few animals; a field you want to judge yourself; anything you'll compare to previously published counts | cohorts; re-runs; anything where consistency between animals matters more than your judgement on any one |
 
 Both write the **same artefacts under the same names**, so you can start an
@@ -43,6 +44,12 @@ downstream functions re-derive it from the path.
 Open `processAnimal2P.m` and run it section by section. It prompts for
 everything.
 
+**Set `runName` near the top** (just after the animal ID). It names the folder
+this analysis writes to — `analysis/<runName>/` — exactly as the headless
+path's `run` does, so both paths produce the same structure. It defaults to
+`manualROI_<date>`; set it to `''` for the old flat layout. Section 8 prints
+the FISSA command with this run's folders already filled in.
+
 | § | what you do |
 |---|---|
 | 1 | pick the treatment name, the pre-treatment tifs, and the FRA map tifs |
@@ -56,11 +63,18 @@ everything.
 | 9 | parse FISSA output → `_tifFileList.mat` |
 | 10–11 | stimulus alignment and per-family dF/F + peak responses |
 
-The Python step at §8:
+The Python step at §8 — **run the section and it prints the command**, with
+this run's ROI and output folders filled in:
 
 ```bash
-conda run -n env_fissa python FISSAviaMatlab_prePostTreatment.py /path/to/TO0003
+conda run -n env_fissa python FISSAviaMatlab_prePostTreatment.py /data/TO0003 \
+    --roi-dir   /data/TO0003/analysis/manualROI_20260903 \
+    --tiff-folder /data/TO0003/NoRMCorred \
+    --out-dir   /data/TO0003/analysis/manualROI_20260903/FISSAoutput
 ```
+
+The tifs are shared by every analysis of the animal; the ROIs and the output
+belong to this run.
 
 **Resuming.** §3b reloads the motion-corrected data without re-running
 NoRMCorre — use it when you come back to draw ROIs for another cell type.
@@ -103,7 +117,9 @@ set:
 | `mapTifs` | `'auto'` | reads each tif's `pulseSet` for `map` (case-insensitive). **Do not use `'bytes'`** unless there are no pulse files — it mis-splits map from stim |
 | `roi` | see below | forwarded to `cellposeROIset` |
 | `excludeNeg` | `true` | movement screening; BPN only (CGC is single-pulse and never screened) |
-| `runLabel` | `''` | stamps each processed table; see [provenance](#provenance) |
+| `run` | derived | folder under `analysis/`, e.g. `cellpose_20260903`; also becomes the provenance stamp — see [Where artifacts are written](#where-artifacts-are-written) |
+| `isolateRun` | `true` | `false` writes into the animal folder instead (the pre-2026-09 flat layout) |
+| `runLabel` | follows `run` | the provenance stamp, when you want it to differ from the folder name |
 | `stages`, `overwrite` | `1:11`, `false` | `stages` takes a subset or a `[from to]` range |
 
 A selector that matches **nothing** is an error, not an empty group — a typo'd
