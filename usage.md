@@ -15,7 +15,7 @@ guide: what to type, in what order, and what to check. For what each function
 
 Both write the **same artefacts under the same names**, so you can start an
 animal in one and finish it in the other. What they cannot do is *coexist* —
-see [Both paths write the same filenames](#both-paths-write-the-same-filenames).
+see [Where artifacts are written](#where-artifacts-are-written).
 
 ---
 
@@ -277,19 +277,89 @@ group.
 
 ---
 
-## Both paths write the same filenames
+## Where artifacts are written
 
-`<animal>_moCorrROI_*.mat`, `_tifFileList.mat`, `_anmlROI_*.mat` and the rest
-are **not** namespaced by ROI source. A headless run **overwrites hand-drawn
-ROI files**.
+**Everything the pipeline produces goes into the animal folder, under a name
+derived only from the animal ID.** Nothing is namespaced by ROI source, by
+analysis parameters, or by run. That is the single fact behind most of the ways
+these runs can go wrong.
 
-If you want to keep both, or compare them:
+| stage | writes | where |
+|---|---|---|
+| 1 | `<animal>_tifFileLegend.mat` | animal folder |
+| 2 | `<animal>_tifCondSplitLegend.mat` | animal folder |
+| 3 | `<tif>_NoRMCorre.tif`, `<animal>_NoRMCorreParams.mat` | `NoRMCorred/` |
+| 4–5 | `<animal>_moCorrROI_<cond>.mat`, `<animal>_ROIoverlay_<cond>.png`, `<animal>_cellposeMean.tif` | animal folder (mean tif in `NoRMCorred/`) |
+| 6 | rewrites the ROI files; old copies as `<animal>_OLDmoCorrROI_<cond>.mat` | animal folder |
+| 7 | `<animal>_moCorr_Tifs_Params.mat` | animal folder |
+| 8 | `matlab.mat`, or `g<k>/matlab.mat` + `groups.json` | `NoRMCorred/FISSAoutput/` |
+| 9 | `<animal>_tifFileList.mat` | animal folder |
+| 10 | `<animal>_anmlROI_<Fam>stimTable_raw.mat`, `_pulseLegend2P.mat`, `_stimGroupIDX.mat` | animal folder |
+| 11 | `<animal>_anmlROI_<Fam>stimTable.mat`, `_FRAmap.mat`, `_anmlROI_FRAtable.mat` | animal folder |
+| group | `<Fam>_Group<g>.mat` + `_manifest.json` | `manifest.outDir` |
 
-1. Back up the animal folder's `.mat` artefacts first.
-2. Run one path to completion, then copy its artefacts somewhere per-run.
-3. Clean the animal folder and run the other.
+### What is and isn't isolated
 
-Treat the animal folder as scratch space, not as the record of any particular
-run. `etc/runTOMTpipeline.m` is a worked example of exactly this discipline
-(clean → run → harvest to `runArtifacts/<runName>/`), if you need to do it over
-a cohort.
+**Group files are isolated** — `manifest.outDir` is yours to choose, so two
+runs can aggregate side by side without touching each other:
+
+```matlab
+manifest.outDir = '/data/cohort/aggregate_cellpose';   % vs ..._handdrawn
+```
+
+**Per-animal artifacts are not.** A second run overwrites the first, silently.
+Specifically:
+
+- a headless run **overwrites hand-drawn `_moCorrROI_*.mat` files**;
+- re-running with different parameters overwrites the tables from the previous
+  parameters, with nothing in the filename to say which is which;
+- if a stim family *fails*, its table is simply **left behind from the previous
+  run** — the most dangerous case, because the folder then holds a mixture and
+  looks perfectly normal.
+
+Two mechanisms exist for this, and they do different jobs:
+
+| | what it does | what it does **not** do |
+|---|---|---|
+| **provenance** (`runLabel` / `requireRun`) | detects a stale table at aggregation time and refuses it | prevent the overwrite |
+| **harvesting** | keeps a per-run copy so nothing is lost | prevent the overwrite |
+
+### Isolating runs properly
+
+The pattern is **clean → run → harvest**, per animal:
+
+1. **Clean** the animal folder of generated artifacts, so nothing from a
+   previous run can be picked up. Keep the raw tifs, `NoRMCorred/` tifs, and
+   the two legends — those record how the tifs were grouped for the motion
+   correction already on disk, and regenerating them risks describing a
+   grouping `NoRMCorred/` was not built with.
+2. **Run** with a `runLabel`.
+3. **Harvest** the artifacts to a per-run directory as soon as that animal
+   succeeds — not at the end, so a failure later in a cohort cannot cost the
+   animals that already finished.
+
+`etc/runTOMTpipeline.m` implements exactly this and is the reference to copy:
+
+```
+<outRoot>/runArtifacts/<runName>/<animalDir>/   per-run copy of every artifact
+<outRoot>/aggregate_<runName>/                  that run's group files
+etc/figures/<runName>/                          that run's figures
+```
+
+Once harvested, a variant that only changes a late stage restores its base
+run's state instead of recomputing it — e.g. a screening on/off pair differs
+only from stage 10, so stages 1–9 are restored rather than repeated.
+
+> **Treat the animal folder as scratch space, not as the record of a run.**
+> To know what a run produced, read `runArtifacts/<runName>/`, or check
+> `runInfo.runLabel` inside a table — not whatever happens to be sitting in the
+> animal folder.
+
+### Comparing two ROI sources on the same animals
+
+1. Back up the animal folders' `.mat` artifacts.
+2. Run the **hand-drawn** path first, harvest, aggregate to its own `outDir`.
+3. Clean, run the **headless** path, harvest, aggregate to a different `outDir`.
+
+Hand-drawn first, because the headless run overwrites the ROI files it would
+otherwise reuse. Restore them from the backup before any later hand-drawn run.
