@@ -205,10 +205,15 @@ function W = ensureWorkspace(n,cfg,F,W)
 %load whatever this stage needs and does not have yet
 if n >= 2 && isempty(W.tifFiles) && isfile(F.legend)
     S = load(F.legend,'tifFiles');
-    W.tifFiles = S.tifFiles;
+    W.tifFiles = repointFolders(S.tifFiles,cfg.dataPath,'tifFileLegend');
 end
 if n >= 3 && isempty(W.tifList) && isfile(F.condSplit)
     S = load(F.condSplit,'tifList');
+    cn = fieldnames(S.tifList);
+    for c = 1:numel(cn)
+        S.tifList.(cn{c}) = repointFolders(S.tifList.(cn{c}),cfg.dataPath,...
+            sprintf('tifCondSplitLegend.%s',cn{c}));
+    end
     W.tifList = S.tifList;
 end
 %stage 7 is the only one that needs the image stacks in memory
@@ -230,6 +235,27 @@ if n == 7 && isempty(W.moCorrImgNonRigid)
         W.rawCatImg.(condN{k}) = raw - min(raw(:));
         clear Ycon raw
     end
+end
+end
+
+% ========================================================================
+function f = repointFolders(f,dataPath,what)
+%A legend built on another machine carries that machine's paths -- these
+%folders routinely read C:\Users\...\OneDrive\Data\<animal>. Every consumer
+%joins .folder with .name, so a stale path fails far downstream (in
+%moCorRawF2tifList, say) with a Windows path in the message. Repoint to the
+%folder the legend itself was found in, which is where the tifs are. A folder
+%that does exist is left alone -- that is how a legitimately split layout
+%(TO0002's BPN subfolder) keeps working.
+if isempty(f) || ~isfield(f,'folder')
+    return
+end
+stale = ~arrayfun(@(x) isfolder(x.folder), f);
+if any(stale)
+    warning('processAnimal2Pheadless:stalePaths',...
+        '%s: %d of %d tif folder(s) do not exist here (e.g. %s); repointing to %s',...
+        what,nnz(stale),numel(f),f(find(stale,1)).folder,dataPath);
+    [f(stale).folder] = deal(dataPath);
 end
 end
 
@@ -499,6 +525,10 @@ for c = 1:numel(condN)
     isCrop(c) = hC.imHeight==128 && hC.imWidth==256;
 end
 intersectConds = condN(~isCrop);
+
+%legacy ROI files (drawn before the grouped FISSA driver existed) carry only
+%the ROIs; FISSA needs moCorTifNames and errors without it
+ensureROIfileMeta(cfg.dataPath,cfg.animal,tifList,W.tifFiles);
 
 before = zeros(1,numel(intersectConds));
 for c = 1:numel(intersectConds)
