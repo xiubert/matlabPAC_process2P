@@ -157,22 +157,41 @@ arguments
     excludeNeg (1,1) logical = true
 end
 
-% list of fields inside stim to equalize
+% Trim the trace fields to a common FRAME count, so the single-pulse branch
+% below can stack one row per tif into a single matrix per stim.
+%
+% Two things here were wrong and only showed up on animals whose tifs differ
+% in length. The measurement used numel() -- the total element count of an
+% nROI x nFrames matrix, not its number of frames -- and the trim used linear
+% indexing, v(1:m), which FLATTENS that matrix into a 1 x m row vector. The
+% ROI dimension was destroyed, and the multi-pulse mat2cell below then failed
+% with "must sum to each dimension of the input matrix size, [1 400]". On this
+% cohort that silently cost TO0007 and TO0010 their whole BPN family: the
+% error was caught upstream and downgraded to a warning, no _raw table was
+% written, and aggregation fell back to a stale table.
+%
+% It also must not run for MULTI-PULSE families at all. Their tifs
+% legitimately differ in length because they carry different pulse counts
+% (TO0007's BPN has both 20-pulse and 10-pulse tifs), the loop below slices
+% each tif by its own totalPulses, and trimming to the shortest would throw
+% away half the pulses of the longer ones.
 fields = {'rawFroi','moCorRawFroi','fissaFroi','SCALEDfissaFroi'};
+multiPulse = ismember('totalPulses',tifStimParamTable.Properties.VariableNames) ...
+    && any(tifStimParamTable.totalPulses > 1);
 
-for fi = 1:numel(fields)
-    f = fields{fi};
-    % collect lengths for entries that have a non-empty numeric vector in tifFileList(k).stim.(f)
-    L = zeros(1,numel(tifFileListStim));
-    for k = 1:numel(tifFileListStim)
-        L(k) = numel(tifFileListStim(k).(f));   
-    end
-    m = min(L);  % target length (smallest)
-    % Trim each valid vector to length m
-    for k = 1:numel(tifFileListStim)
-        v = tifFileListStim(k).(f);
-        if numel(v) > m
-            tifFileListStim(k).(f) = v(1:m);
+if ~multiPulse
+    for fi = 1:numel(fields)
+        f = fields{fi};
+        if ~isfield(tifFileListStim,f); continue, end
+        L = zeros(1,numel(tifFileListStim));
+        for k = 1:numel(tifFileListStim)
+            L(k) = size(tifFileListStim(k).(f),2);   % frames, not elements
+        end
+        m = min(L);
+        for k = 1:numel(tifFileListStim)
+            if size(tifFileListStim(k).(f),2) > m
+                tifFileListStim(k).(f) = tifFileListStim(k).(f)(:,1:m);
+            end
         end
     end
 end
@@ -374,7 +393,14 @@ for i = 1:length(tifFileListStim)
         tifRawF = [tifRawF;mat2cell(tifFileListStim(i).rawFroi(:,framesPreTrig+1:framesPreTrig+framesPerPulse*totalPulse),length(moCorROI),repmat(framesPerPulse,1,totalPulse))'];
         tifMoCorRawF = [tifMoCorRawF;mat2cell(tifFileListStim(i).moCorRawFroi(:,framesPreTrig+1:framesPreTrig+framesPerPulse*totalPulse),length(moCorROI),repmat(framesPerPulse,1,totalPulse))'];
         if FISSA
-            tifFissaFroi = [tifFissaFroi,mat2cell(tifFileListStim(i).fissaFroi(:,framesPreTrig+1:framesPreTrig+framesPerPulse*totalPulse),length(moCorROI),repmat(framesPerPulse,1,totalPulse))'];
+            % ';' not ',': these accumulate one cell per EPOCH and are read
+            % back by linear index at the bottom of this function, the same
+            % way tifRawF is. With every tif carrying the same pulse count a
+            % row concat happened to give the same column-major order, so the
+            % difference was invisible; with unequal pulse counts (TO0007's
+            % BPN mixes 20-pulse and 10-pulse tifs) it cannot concatenate at
+            % all and the whole family was lost.
+            tifFissaFroi = [tifFissaFroi;mat2cell(tifFileListStim(i).fissaFroi(:,framesPreTrig+1:framesPreTrig+framesPerPulse*totalPulse),length(moCorROI),repmat(framesPerPulse,1,totalPulse))'];
             tmptifSCALEDfissaFroi = mat2cell(tifFileListStim(i).SCALEDfissaFroi(:,framesPreTrig+1:framesPreTrig+framesPerPulse*totalPulse),length(moCorROI),repmat(framesPerPulse,1,totalPulse))';
             % ---------- movement / dropout rejection (excludeNeg) ----------
             % Screened here, while epochs are still in acquisition order
@@ -447,7 +473,7 @@ for i = 1:length(tifFileListStim)
                     tmptifSCALEDfissaFroi{j,1}(:) = NaN;
                 end
             end
-            tifSCALEDfissaFroi = [tifSCALEDfissaFroi,tmptifSCALEDfissaFroi];
+            tifSCALEDfissaFroi = [tifSCALEDfissaFroi;tmptifSCALEDfissaFroi];
         end
     else% one pulse for each tif
         tifRawF = [tifRawF; {tifFileListStim(i).rawFroi}'];
