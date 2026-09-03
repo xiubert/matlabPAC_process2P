@@ -31,7 +31,11 @@ fprintf('PASS 1: stimGroupSpec registers FRA\n'); nPass = nPass+1;
 dp = fullfile(cfg.animalsRoot,'TO0003');
 haveReal = isfolder(dp);
 if haveReal
-    R = load(fullfile(dp,'TO0003_FRAmap.mat'),'FRAmap'); R = R.FRAmap;
+    fMap = findAnimalArtifact(dp,'TO0003_FRAmap.mat');
+    assert(~isempty(fMap), ...
+        ['No TO0003_FRAmap.mat under %s, flat or in analysis/<run>/. ' ...
+         'Has processFRA run for this animal?'],dp);
+    R = load(fMap,'FRAmap'); R = R.FRAmap;
     T = FRAmap2table(R,'TO0003');
     nDB = numel(R.dBlist); nFreq = numel(R.freqList);
     assert(height(T) == numel(R.BFuDB)*nDB*nFreq,'row count wrong');

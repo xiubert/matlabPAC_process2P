@@ -29,6 +29,19 @@ assert(nnz(cfg.mapIDX)==2,'byte heuristic should flag 2 map tifs, got %d',nnz(cf
 assert(~any(cfg.preIDX),'no treatment set -> no pre tifs');
 assert(isequal(cfg.stages,1:11));
 
+% CASE 1b: runs are ISOLATED BY DEFAULT -- a derived run name, and artifacts
+% under analysis/<run>/ rather than loose in the animal folder
+assert(~isempty(cfg.run),'a run name should be derived when none is given');
+assert(~cfg.paths.isFlat,'runs must be isolated by default');
+assert(strcmp(cfg.paths.artifacts,fullfile(tmp,'analysis',cfg.run)));
+assert(strcmp(cfg.runLabel,cfg.run),'the stamp must follow the folder name');
+assert(contains(cfg.run,'savedROI') || contains(cfg.run,'cellpose'), ...
+    'the derived name should say which ROI source it used, got %s',cfg.run);
+
+% ...and the flat layout is still reachable for reproducing an old run in place
+flat = headlessConfig(tmp,'animal','TO9999','isolateRun',false,'verbose',false);
+assert(flat.paths.isFlat && strcmp(flat.paths.artifacts,tmp));
+
 % the calibrated ROI defaults must be what the headless run actually uses
 assert(strcmp(cfg.roi.mode,'consensus'));
 assert(cfg.roi.minVotes==2 && cfg.roi.dilatePx==2,...

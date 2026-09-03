@@ -113,11 +113,15 @@ function cfg = headlessConfig(dataPath,varargin)
 %   Name-value -- run isolation and provenance
 %     'run'           name of this analysis run. Artifacts that depend on the
 %                     ROI set and the analysis parameters go to
-%                     <dataPath>/analysis/<run>/ instead of into the animal
-%                     folder, so two analyses of the same animal cannot
-%                     overwrite each other. The raw tifs, the two legends and
-%                     NoRMCorred/ are shared and stay where they are. Default
-%                     '' = the flat legacy layout. See animalPaths.
+%                     <dataPath>/analysis/<run>/, so two analyses of the same
+%                     animal cannot overwrite each other. The raw tifs, the two
+%                     legends and NoRMCorred/ are shared and stay where they
+%                     are. Default '': a name is DERIVED from the ROI source
+%                     and the date (e.g. 'cellpose_20260903'), because runs are
+%                     isolated by default. See animalPaths.
+%     'isolateRun'    false puts artifacts straight into the animal folder,
+%                     the pre-2026-09 flat layout. Default true. Only reach
+%                     for this to reproduce an old flat run in place.
 %     'artifactDir'   put artifacts in this exact folder; wins over 'run'.
 %     'runLabel'      name of this analysis run. Stamped into every processed
 %                     table (see processAnimalStimFamilies), so aggregation can
@@ -186,6 +190,7 @@ addParameter(p,'fissaCmd','default',@(x)ischar(x)||isstring(x));
 addParameter(p,'fissaScaleFactor',0.8,@(x)isnumeric(x)&&isscalar(x));
 addParameter(p,'runLabel','',@(x) ischar(x)||isstring(x));
 addParameter(p,'run','',@(x) ischar(x)||isstring(x));
+addParameter(p,'isolateRun',true,@islogical);
 addParameter(p,'artifactDir','',@(x) ischar(x)||isstring(x));
 addParameter(p,'excludeNeg',true,@islogical);
 addParameter(p,'runStimFamilies',true,@islogical);
@@ -229,7 +234,21 @@ cfg.artifactDir   = char(cfg.artifactDir);
 % apart, so each fills in for the other.
 if isempty(cfg.run) && ~isempty(cfg.runLabel) && isempty(cfg.artifactDir)
     cfg.run = cfg.runLabel;
-elseif ~isempty(cfg.run) && isempty(cfg.runLabel)
+end
+
+% Runs are isolated by DEFAULT. Without a name, one is derived from what this
+% run actually is -- the ROI source it will use, and the date -- so two
+% analyses never land on top of each other just because nobody named them.
+% Pass run='' explicitly (or an artifactDir) to opt out into the flat layout.
+if isempty(cfg.run) && isempty(cfg.artifactDir) && cfg.isolateRun
+    if ismember(4,cfg.stages) || ismember(5,cfg.stages)
+        src = 'cellpose';
+    else
+        src = 'savedROI';
+    end
+    cfg.run = sprintf('%s_%s',src,datestr(now,'yyyymmdd')); %#ok<TNOW1,DATST>
+end
+if ~isempty(cfg.run) && isempty(cfg.runLabel)
     cfg.runLabel = cfg.run;
 end
 cfg.paths = animalPaths(cfg.dataPath,'run',cfg.run,'artifactDir',cfg.artifactDir);

@@ -117,6 +117,7 @@ for s = 1:size(stageDefs,1)
     try
         %stages need each other's outputs, so anything not in W yet is
         %loaded from disk -- that is what makes a partial run resumable
+        checkMigrated(n,cfg,F);
         W = ensureWorkspace(n,cfg,F,W);
         [done,reason] = alreadyDone(n,cfg,F);
         if done && ~cfg.overwrite
@@ -160,6 +161,57 @@ if V
         else
             fprintf('  %2d %-22s %.1f s\n',st.n,st.name,st.seconds);
         end
+    end
+end
+end
+
+% ========================================================================
+function checkMigrated(n,cfg,F)
+%A run reads artifacts earlier stages wrote. When one is missing but the SAME
+%file is sitting in the animal folder, the folder predates the analysis/<run>/
+%layout: the fix is a migration, not a re-run, and saying "file not found"
+%about a file the user can see would be actively misleading.
+if cfg.paths.isFlat; return, end
+switch n
+    case {6,7},  need = {F.moCorrTifs};
+    case 9,      need = {F.moCorrTifs};
+    case {10,11},need = {F.tifFileList};
+    otherwise,   return
+end
+for k = 1:numel(need)
+    f = need{k};
+    if isfile(f); continue, end
+    [~,nm,ext] = fileparts(f);
+
+    % Sitting loose in the animal folder? Then this folder predates the
+    % layout and the fix is a migration, not a re-run.
+    legacy = fullfile(cfg.paths.root,[nm ext]);
+    if isfile(legacy)
+        error('processAnimal2Pheadless:notMigrated', ...
+            ['Stage %d needs %s, which run "%s" has not written:\n    %s\n' ...
+             'The same artifact is loose in the animal folder:\n    %s\n' ...
+             'That folder predates the analysis/<run>/ layout. Either migrate it\n' ...
+             '    migrateAnimalArtifacts(''%s'',''apply'',true)\n' ...
+             'or run the earlier stages so this run produces its own.'], ...
+            n,[nm ext],cfg.paths.run,f,legacy,cfg.paths.root);
+    end
+
+    % Or another run already has it -- naming that run is far more useful
+    % than reporting a missing file, which is what the bare load would do.
+    other = dir(fullfile(cfg.paths.root,'analysis','*',[nm ext]));
+    if ~isempty(other)
+        runs = cell(1,numel(other));
+        for j = 1:numel(other)
+            [~,runs{j}] = fileparts(other(j).folder);
+        end
+        error('processAnimal2Pheadless:noSuchArtifactInRun', ...
+            ['Stage %d needs %s, which run "%s" has not written:\n    %s\n' ...
+             'Other run(s) do have it: %s\n' ...
+             'Either work in one of those\n' ...
+             '    processAnimal2Pheadless(''%s'',''run'',''%s'',...)\n' ...
+             'or run the earlier stages so "%s" produces its own.'], ...
+            n,[nm ext],cfg.paths.run,f,strjoin(runs,', '), ...
+            cfg.paths.root,runs{1},cfg.paths.run);
     end
 end
 end

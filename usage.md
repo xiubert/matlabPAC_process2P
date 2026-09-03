@@ -330,18 +330,39 @@ P.moCorrDir   % .../TO0007/NoRMCorred                    (shared)
 P.legend      % .../TO0007/TO0007_tifFileLegend.mat      (shared)
 ```
 
-### Without a run name, nothing changes
+### Runs are isolated by default
 
-Omit `run` and every artifact goes into the animal folder exactly as it always
-has. Existing folders keep working untouched, and so does anything with a
-hardcoded path. **The layout is opt-in.**
+Omit `run` and a name is **derived** from what the run is — the ROI source and
+the date, e.g. `cellpose_20260903` or `savedROI_20260903`. You never get two
+analyses on top of each other just because nobody named them.
 
-The one thing to know about the flat layout is what it cannot do: a second run
-overwrites the first, silently. A headless run overwrites hand-drawn
-`_moCorrROI_*.mat`; a re-run with different parameters overwrites the previous
-tables; and if a stim family *fails*, its table is simply left behind from the
-previous run — the dangerous case, because the folder then holds a mixture and
-looks perfectly normal.
+To reproduce an old flat run in place, opt out explicitly:
+
+```matlab
+processAnimal2Pheadless(dp,'isolateRun',false);   % straight into the animal folder
+```
+
+That is the pre-2026-09 behaviour, and the one thing to know about it is what
+it cannot do: a second run overwrites the first, silently. A headless run
+overwrites hand-drawn `_moCorrROI_*.mat`; a re-run with different parameters
+overwrites the previous tables; and if a stim family *fails*, its table is
+simply left behind from the previous run — the dangerous case, because the
+folder then holds a mixture and looks perfectly normal.
+
+### If a run cannot find its inputs
+
+A run only sees its own folder, so stage 10 will not pick up a `_tifFileList`
+that another run wrote. The error says which runs do have it:
+
+```
+Stage 10 needs TO0003_tifFileList.mat, which run "cellpose_20260903" has not written
+Other run(s) do have it: legacy
+```
+
+Either work in that run (`'run','legacy'`) or run the earlier stages so this
+one produces its own. If the artifact is loose in the animal folder instead,
+the folder predates the layout and the error points you at
+`migrateAnimalArtifacts`.
 
 ### Run name, provenance and group files
 
@@ -363,7 +384,8 @@ manifest.outDir   = '/data/cohort/aggregate_cellpose_20260903';
 
 ### Migrating an existing animal
 
-Optional — a flat folder reads fine. If you want one layout everywhere:
+A folder written before this layout has its artifacts loose at the top level,
+where a named run will not look. Migrate it once:
 
 ```matlab
 migrateAnimalArtifacts('/data/TO0007')                % dry run, lists what would move
@@ -371,8 +393,11 @@ migrateAnimalArtifacts('/data/TO0007','apply',true)   % -> analysis/legacy/
 ```
 
 It moves only the per-run group; raw, the legends and `NoRMCorred/*.tif` stay
-put. **Back up first** — it moves rather than copies, so anything still
-expecting the flat layout will stop finding its inputs.
+put, and `NoRMCorred/FISSAoutput/` moves into the run. **Back up first** — it
+moves rather than copies, so anything still expecting the flat layout will stop
+finding its inputs.
+
+Afterwards that run is addressable like any other: `'run','legacy'`.
 
 ### Comparing two ROI sources
 
