@@ -83,6 +83,12 @@ function cfg = headlessConfig(dataPath,varargin)
 %                     output already exists.
 %     'fissaScaleFactor'  neuropil subtraction scale. Default 0.8.
 %
+%   Name-value -- stimulus alignment (§10)
+%     'excludeNeg'    forwarded to stimParam2ROI -> anmlROIbyStimTable, which
+%                     screens multi-pulse families (BPN) for movement
+%                     artifacts and blanks failing epochs. Default true.
+%                     CGC is single-pulse and is never screened either way.
+%
 %   Name-value -- per-stim analysis (§10-11)
 %     'runStimFamilies'  Default true.
 %     'runFRAmap'        include the FRA family in stage 11. FRA has no _raw
@@ -136,6 +142,7 @@ addParameter(p,'normcorre',struct(),@isstruct);
 addParameter(p,'roi',struct(),@isstruct);
 addParameter(p,'fissaCmd','default',@(x)ischar(x)||isstring(x));
 addParameter(p,'fissaScaleFactor',0.8,@(x)isnumeric(x)&&isscalar(x));
+addParameter(p,'excludeNeg',true,@islogical);
 addParameter(p,'runStimFamilies',true,@islogical);
 addParameter(p,'runFRAmap',true,@islogical);
 addParameter(p,'stimScriptVars',struct(),@isstruct);

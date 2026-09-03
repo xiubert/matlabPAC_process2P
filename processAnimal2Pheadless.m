@@ -680,7 +680,7 @@ function r = stage10(cfg,~)
 %FRA is not handled here: it has no _raw stage, and processAnimalStimFamilies
 %(stage 11) drives it straight from the tif inventory along with every other
 %family.
-[~,~,~] = stimParam2ROI(cfg.dataPath);
+[~,~,~] = stimParam2ROI(cfg.dataPath,'excludeNeg',cfg.excludeNeg);
 r = struct();
 end
 
