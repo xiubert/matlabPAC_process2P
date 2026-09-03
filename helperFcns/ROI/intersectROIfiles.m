@@ -17,11 +17,18 @@ for ROIfileN = 1:length(filters)
         nTifs = length(tifList.(filters{ROIfileN}));
         tifIDXinAllTifList = ismember({tifFiles.name}',{tifList.(filters{ROIfileN}).name}');
         matchNroiS{ROIfileN} = preROI{ROIfileN}.moCorROI(ROIkeep{ROIfileN});
-        movefile(fullfile(dataPath,[animal '_moCorrROI_' filters{ROIfileN} '.mat']),...
+        roiFile = fullfile(dataPath,[animal '_moCorrROI_' filters{ROIfileN} '.mat']);
+        % keep everything else the file carried. moCorTifNames in particular is
+        % what the FISSA driver reads to build each group's image list, and
+        % cellposeParams/roiParams are the provenance of a segmented set --
+        % rewriting only three variables silently dropped them.
+        S = load(roiFile);
+        movefile(roiFile,...
             fullfile(dataPath,[animal '_OLDmoCorrROI_' filters{ROIfileN} '.mat']))
-        moCorROI = matchNroiS{ROIfileN};
-        save(fullfile(dataPath,[animal '_moCorrROI_' filters{ROIfileN} '.mat']),...
-            'moCorROI','nTifs','tifIDXinAllTifList');
-        clear moCorROI
+        S.moCorROI           = matchNroiS{ROIfileN};
+        S.nTifs              = nTifs;
+        S.tifIDXinAllTifList = tifIDXinAllTifList;
+        save(roiFile,'-struct','S');
+        clear S roiFile
     end
 end
