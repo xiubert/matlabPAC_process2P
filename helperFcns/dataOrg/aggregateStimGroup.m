@@ -31,6 +31,14 @@ function info = aggregateStimGroup(manifest,varargin)
 %     'verbose' - print progress. Default true.
 %     'refVars' - canonical column order. Default: the first animal's order.
 %     'outFile' - override the output path.
+%     'trimTraces' - trim every animal's dF/F columns to the shortest common
+%                 frame count before concatenating. Default true. Recordings
+%                 differ in length across animals, so without this a group can
+%                 be ragged and unusable: any cohort plot that stacks per-cell
+%                 traces fails, and validateStimGroup refuses the group with
+%                 raggedTimeAxis. Only the dF/F axis columns (timeVar +
+%                 traceVars) are trimmed; raw F columns sit on t_total and are
+%                 left alone. What was trimmed is recorded in groupInfo.
 %
 %   Output (struct) - also saved into the group file as `groupInfo`:
 %     .schemaVersion .group .family .created .createdBy
@@ -40,6 +48,7 @@ function info = aggregateStimGroup(manifest,varargin)
 %     .convention    analysis parameters in force (from stimGroupSpec)
 %     .sourceFiles   table: animal, file, bytes, modified
 %     .validation    validateStimGroup report for the concatenated table
+%     .trim          whether a common-axis trim was applied, and to how many frames
 %     .outFile
 %
 %   The group file contains the table under its family's usual variable name
@@ -64,11 +73,13 @@ addParameter(p,'dryRun',false,@islogical);
 addParameter(p,'verbose',true,@islogical);
 addParameter(p,'refVars',{},@(x) isempty(x) || iscellstr(x) || isstring(x)); %#ok<ISCLSTR>
 addParameter(p,'outFile','',@(x) ischar(x)||isstring(x));
+addParameter(p,'trimTraces',true,@islogical);
 parse(p,manifest,varargin{:});
 dryRun  = p.Results.dryRun;
 verbose = p.Results.verbose;
 refVars = p.Results.refVars;
 outFile = char(p.Results.outFile);
+trimTraces = p.Results.trimTraces;
 if ~isempty(refVars); refVars = cellstr(refVars); end
 
 %% ---- manifest ----
@@ -159,6 +170,44 @@ for a = 1:numel(animals)
     end
 end
 
+%% ---- trim to a common dF/F axis ----
+% Recording length differs across animals, so the dF/F columns can be ragged
+% even when every animal is individually valid. Trim to the shortest before
+% concatenating -- the same repair that was applied by hand to the historical
+% group files (etc/fixBPNgroupTraceLength.m). Raw F columns are on the
+% t_total axis and are not touched.
+trimInfo = struct('applied',false,'nFrames',NaN,'perAnimalBefore',[]);
+lens = cellfun(@(T) unique(cellfun(@numel,T.(spec.timeVar))), per, 'uni',0);
+allLens = unique([lens{:}]);
+if trimTraces && numel(allLens) > 1
+    nKeep = min(allLens);
+    % every animal must share the first nKeep samples, or trimming would
+    % silently align traces that are not on the same clock
+    ref = per{1}.(spec.timeVar){1}(1:nKeep);
+    for a = 1:numel(per)
+        tt = cell2mat(cellfun(@(c) reshape(c(1:nKeep),1,[]), per{a}.(spec.timeVar), 'uni',0));
+        if max(abs(tt - ref),[],'all') > 1e-9
+            error('aggregateStimGroup:incompatibleTimeAxis', ...
+                ['%s does not share the first %d samples of the common dF/F ' ...
+                 'axis, so trimming would misalign it.'], animals(a), nKeep);
+        end
+    end
+    for a = 1:numel(per)
+        per{a}.(spec.timeVar) = cellfun(@(c) c(1:nKeep), per{a}.(spec.timeVar), 'uni',0);
+        for v = 1:numel(spec.traceVars)
+            vn = spec.traceVars{v};
+            if ismember(vn, per{a}.Properties.VariableNames)
+                per{a}.(vn) = cellfun(@(c) c(:,1:nKeep), per{a}.(vn), 'uni',0);
+            end
+        end
+    end
+    trimInfo = struct('applied',true,'nFrames',nKeep,'perAnimalBefore',allLens);
+    if verbose
+        fprintf('  trimmed dF/F columns %s -> %d frames (common axis)\n', ...
+            mat2str(allLens), nKeep);
+    end
+end
+
 %% ---- concatenate + validate the group ----
 T = vertcat(per{:});
 rep = validateStimGroup(T, manifest.family, 'refVars',refVars, 'verbose',false);
@@ -191,6 +240,7 @@ info.convention = spec.convention;
 info.sourceFiles = table(srcAnimal,srcFile,srcBytes,srcMod, ...
     'VariableNames',{'animal','file','bytes','modified'});
 info.validation = rep;
+info.trim = trimInfo;
 
 if isempty(outFile)
     outFile = fullfile(manifest.outDir, sprintf(spec.groupPattern, manifest.group));
