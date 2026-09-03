@@ -17,13 +17,36 @@ function cfg = headlessConfig(dataPath,varargin)
 %     'tifPattern'    which tifs are the session. Default '<animal>*.tif'.
 %     'treatmentName' e.g. 'ZX1'. Default '' = every tif is 'none'.
 %     'preTifs'       which tifs are PRE-treatment; the rest are post. Only
-%                     used when treatmentName is set. Accepts numeric indices
-%                     into the sorted tif list, a cellstr/string of file
-%                     names, or a char regular expression matched on names.
-%                     Default [] = every tif is post, which is almost never
-%                     what you want, so it warns.
-%     'mapTifs'       which tifs are FRA/BF maps. Same selector forms, plus
-%                     two rules:
+%                     used when treatmentName is set. Four forms, all matched
+%                     against the tif list in dir() order:
+%
+%                       indices    positions in that list, NOT acquisition
+%                                  numbers -- 1:5 is the first five files
+%                                    'preTifs', 1:5
+%                                    'preTifs', [1 3 7]
+%                       regexp     a char row, matched on the FILE NAME. Wrap
+%                                  the acquisition number in underscores so it
+%                                  anchors to that field:
+%                                    'preTifs', '_0003[1-4]_'   % 31..34
+%                                    'preTifs', '_000(31|45)_'  % 31 and 45
+%                       names      cellstr/string of exact file names
+%                                    'preTifs', {'A_00031_00001.tif'}
+%                       mask       logical, one element per tif
+%
+%                     A selector matching NOTHING is an error, not an empty
+%                     group: a typo'd regexp would otherwise relabel the whole
+%                     session as post-treatment silently. Default [] = every
+%                     tif is post, which is almost never what you want, so
+%                     that case warns.
+%
+%                     The resolved selection is returned as cfg.preIDX
+%                     (logical over cfg.tifNames) before anything is written,
+%                     so it can be checked first:
+%                       cfg = headlessConfig(dp,'treatmentName','ZX1', ...
+%                                               'preTifs','_0003[1-4]_');
+%                       cfg.tifNames(cfg.preIDX)
+%     'mapTifs'       which tifs are FRA/BF maps. Same four selector forms as
+%                     preTifs, plus two rules:
 %                       'auto' (default) - read each tif's _Pulses.mat and
 %                          take those whose pulseSet contains
 %                          mapPulseSetToken. This is the same

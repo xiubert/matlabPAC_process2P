@@ -98,7 +98,7 @@ set:
 
 | option | default | note |
 |---|---|---|
-| `treatmentName`, `preTifs` | `''` → all `'none'` | `preTifs` takes indices, a logical mask, file names, or a regexp |
+| `treatmentName`, `preTifs` | `''` → all `'none'` | which tifs are pre-treatment — see [Choosing tifs](#choosing-tifs-pretifs-and-maptifs) |
 | `mapTifs` | `'auto'` | reads each tif's `pulseSet` for `map` (case-insensitive). **Do not use `'bytes'`** unless there are no pulse files — it mis-splits map from stim |
 | `roi` | see below | forwarded to `cellposeROIset` |
 | `excludeNeg` | `true` | movement screening; BPN only (CGC is single-pulse and never screened) |
@@ -126,6 +126,77 @@ Defaults, calibrated against hand-drawn ROIs on this data:
 - **`minVotes = 2`** means a cell must appear in ≥2 tifs. `1` is the union,
   `numel(tifs)` the strict inner join — the join keeps nothing on real data,
   because the worst tif governs.
+
+### Choosing tifs (`preTifs` and `mapTifs`)
+
+`treatmentName` names the treatment; `preTifs` says which tifs came **before**
+it. Everything not selected becomes post-treatment. So with
+`'treatmentName','ZX1'`, selected tifs are labelled `preZX1` and the rest
+`postZX1`. Leave `treatmentName` empty and every tif is `'none'` — `preTifs` is
+then ignored.
+
+`mapTifs` takes the **same four forms**, but you rarely need them: its default
+reads the pulse files, which is authoritative.
+
+All examples below are real, run against `TO0007` (33 tifs, named
+`TO0007AAAA_00031_00001.tif` … `TO0007AAAA_00070_00001.tif`).
+
+**1. Indices** — positions in the tif list, in `dir()` order (alphabetical,
+which for these names is acquisition order):
+
+```matlab
+'preTifs', 1:5          % the first five tifs -> _00031 … _00035
+'preTifs', [1 3 7]      % specific positions
+```
+
+Positions, *not* acquisition numbers — `1:5` means the first five files, not
+tifs 1–5. An out-of-range index is an error.
+
+**2. A regular expression** — matched against the **file name** (not the path).
+Usually the clearest option, because it keys on the acquisition number:
+
+```matlab
+'preTifs', '_0003[1-4]_'      % _00031 _00032 _00033 _00034   (4 tifs)
+'preTifs', '_000(31|45)_'     % _00031 and _00045 only        (2 tifs)
+'preTifs', '_0003'            % every tif whose number starts 0003
+```
+
+The `_`…`_` wrapping matters: `'_0003[1-4]_'` anchors to the acquisition-number
+field, whereas a bare `'3'` would match almost everything.
+
+**3. File names** — explicit and unambiguous, good when the split is irregular:
+
+```matlab
+'preTifs', {'TO0007AAAA_00031_00001.tif','TO0007AAAA_00032_00001.tif'}
+```
+
+A name that isn't in the folder is an error, so a typo can't silently shrink
+the group.
+
+**4. A logical mask** — one element per tif, for when you compute the split:
+
+```matlab
+m = false(33,1);  m([2 4 6]) = true;
+'preTifs', m
+```
+
+#### Check before you commit to a run
+
+`headlessConfig` resolves the selectors without writing anything, so you can
+see exactly what you'd get:
+
+```matlab
+cfg = headlessConfig('/data/TO0007','treatmentName','ZX1','preTifs','_0003[1-4]_');
+cfg.tifNames(cfg.preIDX)     % the pre-treatment tifs
+cfg.tifNames(cfg.mapIDX)     % the FRA map tifs
+nnz(cfg.preIDX)              % how many
+```
+
+**A selector that matches nothing is an error**
+(`headlessConfig:badSelector`), not an empty group — a typo'd regexp would
+otherwise relabel the whole session as post-treatment and nothing would say so.
+The one case that only *warns* is `treatmentName` set with `preTifs` left
+empty, since "everything is post-treatment" is occasionally what you mean.
 
 ### Always look at the overlay
 
