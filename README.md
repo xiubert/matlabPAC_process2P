@@ -118,6 +118,29 @@ Full processing pipeline for a single animal session. Edit `dataPath` at the top
 
 ---
 
+### 1a. Tif compression — why motion-corrected tifs are written uncompressed
+
+ScanImage writes some acquisitions **LZW-compressed**. `writeMoCorTifs` copies
+the source acquisition's tags onto its output, and it used to copy
+`Compression` along with them — so the motion-corrected tifs inherited LZW.
+MATLAB reads those back correctly, which is why it went unnoticed; no other
+reader does, and each failure surfaces far from the cause:
+
+| Consumer | Symptom |
+|---|---|
+| `ScanImageTiffReader` (used by `flattenTif`) | **garbled pixels, no error** — a mean of int16 data in the range 20–1700 came back as ±8000 |
+| FISSA / `tifffile` | `COMPRESSION.LZW requires the 'imagecodecs' package` |
+
+`writeMoCorTifs` now sets `Compression.None` explicitly and no longer inherits
+the tag, matching `writeTifWithHeader`. `flattenTif` additionally falls back to
+MATLAB's `Tiff` class when `ScanImageTiffReader`'s frame 1 matches neither
+orientation, rather than assuming it must be transposed.
+
+**`NoRMCorred/` folders written before this fix still contain LZW tifs.**
+`imagecodecs` is installed in the `env_fissa` conda environment, so FISSA reads
+them; `ScanImageTiffReader` still cannot, so `flattenTif` pays a slower
+streaming re-read. Regenerate those folders if you want the fast path.
+
 ### 1b. 256×128 (10 Hz spontaneous) reuse path
 
 Spontaneous sessions can be acquired at **256×128, 10 Hz** (double the 5 Hz frame rate) by halving `linesPerFrame` to 128 with `scanAngleMultiplierSlow = 0.5` at the **same zoom** — a centered vertical crop of the 256×256 field (drops the top/bottom 64 rows, 1:1 pixels). ROIs drawn on the 256×256 data are reused on the 256×128 spont tifs; only cells fully contained in the central crop survive. **5 Hz and 10 Hz traces are never pooled** — the 256×128 data follows the **Spont** analysis path as its own family.

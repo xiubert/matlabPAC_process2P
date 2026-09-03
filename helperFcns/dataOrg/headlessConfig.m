@@ -39,8 +39,16 @@ function cfg = headlessConfig(dataPath,varargin)
 %                          under the 94.2 MB maps. Use it only when pulse
 %                          files are unavailable.
 %                     Pass [] for none.
-%     'mapPulseSetToken'   substring identifying a mapping pulse set.
-%                     Default 'Mapping' (e.g. 'JC_PureTone_2PMapping').
+%     'mapPulseSetToken'   substring identifying a mapping pulse set, matched
+%                     CASE-INSENSITIVELY so naming differs freely between
+%                     experimenters. Default 'map', which matches
+%                     'JC_PureTone_2PMapping' as well as plainer names like
+%                     'PT_map'. Checked across 18 animal folders / 15 distinct
+%                     pulse sets / 426 tifs on this drive: 'map' selects
+%                     exactly the mapping set and nothing else -- notably NOT
+%                     the pure-tone STIM sets 'JC_PureTone_5-52kHz_400ms' or
+%                     'JC_PureTone_5_6_12_24kHz', so it discriminates rather
+%                     than merely being permissive.
 %     'mapBytesThreshold'  Default 11e6; only used by the 'bytes' rule.
 %
 %   Name-value -- condition split (§2)
@@ -120,7 +128,7 @@ addParameter(p,'treatmentName','',@(x)ischar(x)||isstring(x));
 addParameter(p,'preTifs',[]);
 addParameter(p,'mapTifs','auto');
 addParameter(p,'mapBytesThreshold',11e6,@(x)isnumeric(x)&&isscalar(x));
-addParameter(p,'mapPulseSetToken','Mapping',@(x)ischar(x)||isstring(x));
+addParameter(p,'mapPulseSetToken','map',@(x)ischar(x)||isstring(x));
 addParameter(p,'condFilters',{},@(x)isempty(x)||iscellstr(x)||isstring(x)); %#ok<ISCLSTR>
 addParameter(p,'altZoomPolicy','drop',@(s)any(strcmpi(s,{'drop','keep','error'})));
 addParameter(p,'funcChan',2,@(x)isnumeric(x)&&isscalar(x));
@@ -285,9 +293,10 @@ end
 if isempty(pl) || ~isfield(pl,'pulseSet')
     return
 end
-mapTif = {pl(contains(string({pl.pulseSet}),cfg.mapPulseSetToken)).tif};
+hit = contains(string({pl.pulseSet}),cfg.mapPulseSetToken,'IgnoreCase',true);
+mapTif = {pl(hit).tif};
 idx = ismember({tifFiles.name}',mapTif(:));
-label = sprintf('pulseSet contains ''%s''',cfg.mapPulseSetToken);
+label = sprintf('pulseSet contains ''%s'' (case-insensitive)',cfg.mapPulseSetToken);
 end
 % ------------------------------------------------------------------------
 function idx = resolveSelector(sel,tifFiles,name)
