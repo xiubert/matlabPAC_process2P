@@ -24,7 +24,14 @@ function out = cellposeROIset(dataPath,animal,tifList,tifFiles,opts)
 %         tifs. Cheaper (one GPU call), no vote information.
 %
 %   Inputs
-%     dataPath   animal data folder; holds NoRMCorred/ and receives the files.
+%     dataPath   animal data folder; holds the raw tifs and NoRMCorred/.
+%
+%   Name-value -- where output goes
+%     'artifactDir'  write the ROI files, the session mean and the QC overlay
+%                    here instead of into dataPath. NoRMCorred/ is still read
+%                    from dataPath, because the motion-corrected tifs are
+%                    shared by every analysis of the animal. Default '' =
+%                    dataPath (the flat legacy layout). See animalPaths.
 %     animal     animal ID, for the filenames.
 %     tifList    condition -> tif struct map from §2. Pass only conditions
 %                that share a frame size: a 256x128 crop condition is derived
@@ -65,8 +72,7 @@ function out = cellposeROIset(dataPath,animal,tifList,tifFiles,opts)
 %                     Cellpose call per ladder entry, on one tif. Default false.
 %     'diameterLadder' diameters tried by autoDiameter.
 %                     Default [10 12 15 18 20 25].
-%     'saveMeanTif'   write NoRMCorred/<animal>_cellposeMean.tif for QC.
-%                     Default true.
+%     'saveMeanTif'   write <animal>_cellposeMean.tif for QC. Default true.
 %     'saveROIimage'  write <animal>_ROIoverlay_<cond>.png per condition -- the
 %                     ROIs drawn over the image they came from, coloured by
 %                     detection count. A headless run has no moment where a
@@ -104,12 +110,16 @@ arguments
     opts.diameterLadder     double = [10 12 15 18 20 25]
     opts.saveMeanTif  (1,1) logical = true
     opts.saveROIimage (1,1) logical = true
+    opts.artifactDir  (1,:) char = ''
     opts.verbose      (1,1) logical = true
 end
 
 if ~isfolder(dataPath)
     error('cellposeROIset:noDataPath','Not a folder: %s',dataPath);
 end
+artifactDir = opts.artifactDir;
+if isempty(artifactDir); artifactDir = dataPath; end
+if ~isfolder(artifactDir); mkdir(artifactDir); end
 
 allCond = fieldnames(tifList);
 conds = opts.conds;
@@ -267,10 +277,9 @@ roiParams = struct('mode',opts.mode,'minVotes',opts.minVotes,...
 meanTifPath = '';
 if opts.saveMeanTif
     srcTif = refTif(tifList,conds{refIdx},dataPath);
-    %into NoRMCorred/ rather than the animal folder: a derived tif sitting
-    %next to the acquisitions would be picked up by the <animal>*.tif
-    %inventory glob and processed as if it were a recording
-    meanTifPath = fullfile(dataPath,'NoRMCorred',[animal '_cellposeMean.tif']);
+    %not next to the acquisitions: a derived tif there would be picked up by
+    %the <animal>*.tif inventory glob and processed as if it were a recording
+    meanTifPath = fullfile(artifactDir,[animal '_cellposeMean.tif']);
     try
         if isfile(srcTif)
             writeTifWithHeader(fillNaN(sessionMean),meanTifPath,srcTif,...
@@ -305,7 +314,7 @@ for c = 1:numel(conds)
     S.consensusInfo      = consensusInfo;
     S.cellposeLabelImg   = uint16(labelImg);
 
-    files{c} = fullfile(dataPath,[animal '_moCorrROI_' cond '.mat']);
+    files{c} = fullfile(artifactDir,[animal '_moCorrROI_' cond '.mat']);
     save(files{c},'-struct','S');
 
     perCond(c).name     = cond;
@@ -321,7 +330,8 @@ end
 %the whole point of a headless run is that nobody watched it draw these
 if opts.saveROIimage
     try
-        plotROIoverlay(dataPath,animal,'meanImg',sessionMean);
+        plotROIoverlay(dataPath,animal,'meanImg',sessionMean, ...
+            'artifactDir',artifactDir,'outDir',artifactDir);
     catch ME
         warning('cellposeROIset:overlayFailed',...
             'Could not write the ROI overlay (%s); the ROI files are fine.',ME.message);

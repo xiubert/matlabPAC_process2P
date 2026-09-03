@@ -23,7 +23,9 @@ function outFile = plotROIoverlay(dataPath,animal,opts)
 %     'meanImg'  H x W image to draw on. Default: NoRMCorred/<animal>_
 %                cellposeMean.tif when present, else the condition's mean
 %                projection via condMeanImg, else a blank field.
-%     'outDir'   where the PNG goes. Default dataPath.
+%     'outDir'   where the PNG goes. Default: the artifact dir.
+%     'artifactDir'  where the ROI files and session mean live. Default '' =
+%                dataPath (the flat legacy layout). See animalPaths.
 %     'showIDs'  label each ROI with its ID. Default true.
 %     'resolution' export DPI. Default 150.
 %     'visible'  show the figure. Default false (it is closed after export).
@@ -42,14 +44,17 @@ arguments
     opts.showIDs    (1,1) logical = true
     opts.resolution (1,1) double = 150
     opts.visible    (1,1) logical = false
+    opts.artifactDir(1,:) char = ''
 end
 
+artDir = opts.artifactDir;
+if isempty(artDir); artDir = dataPath; end
 outDir = opts.outDir;
-if isempty(outDir); outDir = dataPath; end
+if isempty(outDir); outDir = artDir; end
 if ~isfolder(outDir); mkdir(outDir); end
 
 if isempty(opts.cond)
-    d = dir(fullfile(dataPath,[animal '_moCorrROI_*.mat']));
+    d = dir(fullfile(artDir,[animal '_moCorrROI_*.mat']));
     conds = regexprep({d.name},['^' animal '_moCorrROI_(.*)\.mat$'],'$1');
 else
     conds = {opts.cond};
@@ -61,7 +66,7 @@ end
 outFile = {};
 for c = 1:numel(conds)
     cond = conds{c};
-    f = fullfile(dataPath,[animal '_moCorrROI_' cond '.mat']);
+    f = fullfile(artDir,[animal '_moCorrROI_' cond '.mat']);
     S = load(f);
     if ~isfield(S,'moCorROI') || isempty(S.moCorROI)
         warning('plotROIoverlay:noROI','%s holds no ROIs; skipping.',f);
@@ -71,7 +76,7 @@ for c = 1:numel(conds)
     roi = roi(~[roi.deleted]);
     sz  = size(roi(1).mask);
 
-    img = resolveImage(opts.meanImg,dataPath,animal,cond,sz);
+    img = resolveImage(opts.meanImg,dataPath,artDir,animal,cond,sz);
 
     fh = figure('Visible',onOff(opts.visible),'Color','w',...
         'Position',[100 100 900 780]);
@@ -127,13 +132,18 @@ end
 end
 
 % ------------------------------------------------------------------------
-function img = resolveImage(given,dataPath,animal,cond,sz)
+function img = resolveImage(given,dataPath,artDir,animal,cond,sz)
 if ~isempty(given)
     img = given;
     return
 end
 %the segmented session mean, written by cellposeROIset
-meanTif = fullfile(dataPath,'NoRMCorred',[animal '_cellposeMean.tif']);
+%written next to the ROI files by cellposeROIset; older runs left it under
+%NoRMCorred/, so look there too
+meanTif = fullfile(artDir,[animal '_cellposeMean.tif']);
+if ~isfile(meanTif)
+    meanTif = fullfile(dataPath,'NoRMCorred',[animal '_cellposeMean.tif']);
+end
 if isfile(meanTif)
     try
         img = double(imread(meanTif));

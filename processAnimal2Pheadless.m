@@ -68,15 +68,26 @@ out = struct('cfg',cfg,'stages',struct('n',{},'name',{},'ran',{},...
     'skipped',{},'reason',{},'seconds',{},'error',{}),...
     'roi',[],'stim',[],'files',struct());
 
+%every path comes from one place, so the flat legacy layout and the per-run
+%analysis/<run>/ layout differ only in what animalPaths returns
+P = cfg.paths;
 F = struct();
-F.legend     = fullfile(dataPath,[animal '_tifFileLegend.mat']);
-F.condSplit  = fullfile(dataPath,[animal '_tifCondSplitLegend.mat']);
-F.moCorrDir  = fullfile(dataPath,'NoRMCorred');
-F.ncParams   = fullfile(F.moCorrDir,[animal '_NoRMCorreParams.mat']);
-F.moCorrTifs = fullfile(dataPath,[animal '_moCorr_Tifs_Params.mat']);
-F.fissaDir   = fullfile(F.moCorrDir,'FISSAoutput');
-F.tifFileList= fullfile(dataPath,[animal '_tifFileList.mat']);
+F.legend     = P.legend;
+F.condSplit  = P.condSplit;
+F.moCorrDir  = P.moCorrDir;
+F.ncParams   = P.ncParams;
+F.moCorrTifs = P.moCorrTifs;
+F.fissaDir   = P.fissaDir;
+F.tifFileList= P.tifFileList;
+F.artifacts  = P.artifacts;
 out.files = F;
+if ~P.isFlat
+    if V; fprintf('artifacts -> %s\n',P.artifacts); end
+    %describe the run before it starts, so a crashed run is still identifiable
+    writeRunInfo(P,struct('roiSource',roiSourceFor(cfg), ...
+        'stages',mat2str(cfg.stages),'excludeNeg',cfg.excludeNeg, ...
+        'entryPoint','processAnimal2Pheadless'));
+end
 
 %workspace carried between stages
 W = struct('tifFiles',[],'tifList',[],'moCorrImgNonRigid',[],'rawCatImg',[]);
@@ -110,6 +121,7 @@ for s = 1:size(stageDefs,1)
     try
         %stages need each other's outputs, so anything not in W yet is
         %loaded from disk -- that is what makes a partial run resumable
+        checkMigrated(n,cfg,F);
         W = ensureWorkspace(n,cfg,F,W);
         [done,reason] = alreadyDone(n,cfg,F);
         if done && ~cfg.overwrite
@@ -144,6 +156,11 @@ for s = 1:size(stageDefs,1)
     end
 end
 
+if ~cfg.paths.isFlat
+    writeRunInfo(cfg.paths,struct('completed', ...
+        char(datetime('now','Format','uuuu-MM-dd HH:mm:ss'))));
+end
+
 if V
     fprintf('\n===== %s complete =====\n',animal);
     for k = 1:numel(out.stages)
@@ -154,6 +171,68 @@ if V
             fprintf('  %2d %-22s %.1f s\n',st.n,st.name,st.seconds);
         end
     end
+end
+end
+
+% ========================================================================
+function checkMigrated(n,cfg,F)
+%A run reads artifacts earlier stages wrote. When one is missing but the SAME
+%file is sitting in the animal folder, the folder predates the analysis/<run>/
+%layout: the fix is a migration, not a re-run, and saying "file not found"
+%about a file the user can see would be actively misleading.
+if cfg.paths.isFlat; return, end
+switch n
+    case {6,7},  need = {F.moCorrTifs};
+    case 9,      need = {F.moCorrTifs};
+    case {10,11},need = {F.tifFileList};
+    otherwise,   return
+end
+for k = 1:numel(need)
+    f = need{k};
+    if isfile(f); continue, end
+    [~,nm,ext] = fileparts(f);
+
+    % Sitting loose in the animal folder? Then this folder predates the
+    % layout and the fix is a migration, not a re-run.
+    legacy = fullfile(cfg.paths.root,[nm ext]);
+    if isfile(legacy)
+        error('processAnimal2Pheadless:notMigrated', ...
+            ['Stage %d needs %s, which run "%s" has not written:\n    %s\n' ...
+             'The same artifact is loose in the animal folder:\n    %s\n' ...
+             'That folder predates the analysis/<run>/ layout. Either migrate it\n' ...
+             '    migrateAnimalArtifacts(''%s'',''apply'',true)\n' ...
+             'or run the earlier stages so this run produces its own.'], ...
+            n,[nm ext],cfg.paths.run,f,legacy,cfg.paths.root);
+    end
+
+    % Or another run already has it -- naming that run is far more useful
+    % than reporting a missing file, which is what the bare load would do.
+    other = dir(fullfile(cfg.paths.root,'analysis','*',[nm ext]));
+    if ~isempty(other)
+        runs = cell(1,numel(other));
+        for j = 1:numel(other)
+            [~,runs{j}] = fileparts(other(j).folder);
+        end
+        error('processAnimal2Pheadless:noSuchArtifactInRun', ...
+            ['Stage %d needs %s, which run "%s" has not written:\n    %s\n' ...
+             'Other run(s) do have it: %s\n' ...
+             'Either work in one of those\n' ...
+             '    processAnimal2Pheadless(''%s'',''run'',''%s'',...)\n' ...
+             'or run the earlier stages so "%s" produces its own.'], ...
+            n,[nm ext],cfg.paths.run,f,strjoin(runs,', '), ...
+            cfg.paths.root,runs{1},cfg.paths.run);
+    end
+end
+end
+
+% ========================================================================
+function src = roiSourceFor(cfg)
+%what this run's ROIs will be: stage 4 segments, anything else reuses whatever
+%ROI set is already in the run folder
+if ismember(4,cfg.stages) || ismember(5,cfg.stages)
+    src = 'cellpose';
+else
+    src = 'handDrawn';
 end
 end
 
@@ -185,7 +264,7 @@ switch n
         done = isfolder(F.moCorrDir) && ~isempty(dir(fullfile(F.moCorrDir,'*_NoRMCorre.tif')));
         reason = 'NoRMCorred tifs exist';
     case 4
-        done = ~isempty(dir(fullfile(cfg.dataPath,[cfg.animal '_moCorrROI_*.mat'])));
+        done = ~isempty(dir(fullfile(cfg.paths.artifacts,[cfg.animal '_moCorrROI_*.mat'])));
         reason = 'moCorrROI files exist';
     case 7, done = isfile(F.moCorrTifs);  reason = 'moCorr_Tifs_Params exists';
     case 8
@@ -194,7 +273,7 @@ switch n
         reason = 'FISSA output exists';
     case 9, done = isfile(F.tifFileList); reason = 'tifFileList exists';
     case 10
-        done = ~isempty(dir(fullfile(cfg.dataPath,[cfg.animal '_anmlROI_*_raw.mat'])));
+        done = ~isempty(dir(fullfile(cfg.paths.artifacts,[cfg.animal '_anmlROI_*_raw.mat'])));
         reason = 'raw stim tables exist';
 end
 %6 and 11 are cheap and idempotent enough to just re-run
@@ -482,7 +561,8 @@ end
 roiArgs = cfg.roi;
 roiNV = struct2nv(roiArgs);
 roiOut = cellposeROIset(cfg.dataPath,cfg.animal,tifList,tifFiles,...
-    'conds',fullConds,roiNV{:},'verbose',cfg.verbose);
+    'conds',fullConds,roiNV{:},'artifactDir',cfg.paths.artifacts,...
+    'verbose',cfg.verbose);
 
 %--- §5b: derive each crop condition from its 256x256 source ---
 for c = find(isCrop)
@@ -497,11 +577,11 @@ for c = find(isCrop)
             ['Cannot resolve a unique 256x256 ROI source for crop condition ''%s''. '...
              'Candidates: %s.'],tgtCond,strjoin(fullConds',', '));
     end
-    srcROIpath = fullfile(cfg.dataPath,[cfg.animal '_moCorrROI_' srcCond '.mat']);
+    srcROIpath = fullfile(cfg.paths.artifacts,[cfg.animal '_moCorrROI_' srcCond '.mat']);
     remapROIfile(srcROIpath,...
         fullfile(tifList.(srcCond)(1).folder,tifList.(srcCond)(1).name),...
         fullfile(tifList.(tgtCond)(1).folder,tifList.(tgtCond)(1).name),...
-        'outPath',fullfile(cfg.dataPath,[cfg.animal '_moCorrROI_' tgtCond '.mat']),...
+        'outPath',fullfile(cfg.paths.artifacts,[cfg.animal '_moCorrROI_' tgtCond '.mat']),...
         'nTifs',numel(tifList.(tgtCond)),...
         'tifIDXinAllTifList',ismember({tifFiles.name}',{tifList.(tgtCond).name}'),...
         'moCorTifNames',strrep({tifList.(tgtCond).name}','.tif','_NoRMCorre.tif'),...
@@ -528,16 +608,16 @@ intersectConds = condN(~isCrop);
 
 %legacy ROI files (drawn before the grouped FISSA driver existed) carry only
 %the ROIs; FISSA needs moCorTifNames and errors without it
-ensureROIfileMeta(cfg.dataPath,cfg.animal,tifList,W.tifFiles);
+ensureROIfileMeta(cfg.paths.artifacts,cfg.animal,tifList,W.tifFiles);
 
 before = zeros(1,numel(intersectConds));
 for c = 1:numel(intersectConds)
-    S = load(fullfile(cfg.dataPath,[cfg.animal '_moCorrROI_' intersectConds{c} '.mat']),'moCorROI');
+    S = load(fullfile(cfg.paths.artifacts,[cfg.animal '_moCorrROI_' intersectConds{c} '.mat']),'moCorROI');
     before(c) = numel(S.moCorROI);
 end
-intersectROIfiles(cfg.dataPath,cfg.animal,intersectConds,tifList,W.tifFiles)
+intersectROIfiles(cfg.paths.artifacts,cfg.animal,intersectConds,tifList,W.tifFiles)
 for c = 1:numel(intersectConds)
-    S = load(fullfile(cfg.dataPath,[cfg.animal '_moCorrROI_' intersectConds{c} '.mat']),'moCorROI');
+    S = load(fullfile(cfg.paths.artifacts,[cfg.animal '_moCorrROI_' intersectConds{c} '.mat']),'moCorROI');
     if cfg.verbose
         fprintf('  %-24s %d -> %d ROIs\n',intersectConds{c},before(c),numel(S.moCorROI));
     end
@@ -551,7 +631,7 @@ function r = stage7(cfg,F,W)
 tifList = W.tifList;
 condN   = fieldnames(tifList);
 for c = 1:numel(condN)
-    S = load(fullfile(cfg.dataPath,[cfg.animal '_moCorrROI_' condN{c} '.mat']),'moCorROI');
+    S = load(fullfile(cfg.paths.artifacts,[cfg.animal '_moCorrROI_' condN{c} '.mat']),'moCorROI');
     if cfg.verbose
         fprintf('  %s: %d ROIs x %d tifs\n',condN{c},numel(S.moCorROI),numel(tifList.(condN{c})));
     end
@@ -578,7 +658,15 @@ if isempty(cfg.fissaCmd)
         ['FISSA output is missing and fissaCmd is empty. Run '...
          'FISSAviaMatlab_prePostTreatment.py on %s, or set fissaCmd.'],cfg.dataPath);
 end
-cmd = sprintf(cfg.fissaCmd,cfg.dataPath);
+fissaArgs = sprintf('"%s"',cfg.dataPath);
+if ~cfg.paths.isFlat
+    %the motion-corrected tifs are shared; the ROIs and the output belong to
+    %this run. These go into the ARGUMENT string so they reach the python
+    %script rather than the shell that wraps it.
+    fissaArgs = sprintf('%s --roi-dir "%s" --tiff-folder "%s" --out-dir "%s"', ...
+        fissaArgs,cfg.paths.artifacts,cfg.paths.moCorrDir,cfg.paths.fissaDir);
+end
+cmd = sprintf(cfg.fissaCmd,fissaArgs);
 %MATLAB points LD_LIBRARY_PATH at its own libs, which breaks system python
 cmd = ['env -u LD_LIBRARY_PATH -u LD_PRELOAD ' cmd];
 if cfg.verbose, fprintf('%s\n',cmd); end
@@ -680,7 +768,8 @@ function r = stage10(cfg,~)
 %FRA is not handled here: it has no _raw stage, and processAnimalStimFamilies
 %(stage 11) drives it straight from the tif inventory along with every other
 %family.
-[~,~,~] = stimParam2ROI(cfg.dataPath,'excludeNeg',cfg.excludeNeg);
+[~,~,~] = stimParam2ROI(cfg.dataPath,'excludeNeg',cfg.excludeNeg,...
+    'artifactDir',cfg.paths.artifacts);
 r = struct();
 end
 
@@ -690,7 +779,8 @@ if ~cfg.runStimFamilies
     r = struct(); return
 end
 args = {'showPlots',false,'scriptVars',cfg.stimScriptVars, ...
-    'runLabel',cfg.runLabel,'verbose',cfg.verbose};
+    'runLabel',cfg.runLabel,'artifactDir',cfg.paths.artifacts, ...
+    'verbose',cfg.verbose};
 if ~cfg.runFRAmap
     fams = stimGroupSpec();
     args = [args,{'families',fams(~strcmp(fams,'FRA'))}];

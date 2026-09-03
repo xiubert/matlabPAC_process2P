@@ -41,6 +41,9 @@ function out = processAnimalStimFamilies(dataPath,varargin)
 %                   from the workspace. e.g.
 %                     struct('PTfreqSelect',6484)
 %                   for an animal recorded with several pure-tone frequencies.
+%     'artifactDir' - where the _raw and processed tables live. Default '' =
+%                   dataPath. The *_Pulses.mat the scripts read stay at
+%                   dataPath either way. See animalPaths.
 %     'runLabel'  - name of the analysis run. When given, a runInfo struct is
 %                   appended to every processed table this call writes,
 %                   recording the run, the ROI set it came from (count and
@@ -77,6 +80,7 @@ addParameter(p,'showPlots',false,@islogical);
 addParameter(p,'overwrite',true,@islogical);
 addParameter(p,'scriptVars',struct(),@isstruct);
 addParameter(p,'runLabel','',@(x) ischar(x)||isstring(x));
+addParameter(p,'artifactDir','',@(x) ischar(x)||isstring(x));
 addParameter(p,'verbose',true,@islogical);
 parse(p,dataPath,varargin{:});
 dataPath  = char(p.Results.dataPath);
@@ -85,6 +89,8 @@ showPlots = p.Results.showPlots;
 overwrite = p.Results.overwrite;
 scriptVars= p.Results.scriptVars;
 runLabel  = char(p.Results.runLabel);
+artifactDir = char(p.Results.artifactDir);
+if isempty(artifactDir); artifactDir = dataPath; end
 verbose   = p.Results.verbose;
 
 if ~isfolder(dataPath)
@@ -103,7 +109,7 @@ out = struct('family',{},'ok',{},'skipped',{},'reason',{}, ...
 
 for i = 1:numel(families)
     spec = stimGroupSpec(families{i});
-    proc = fullfile(dataPath,[animal spec.suffixProcessed]);
+    proc = fullfile(artifactDir,[animal spec.suffixProcessed]);
 
     % A family with an empty suffixRaw has no _raw stage: its process* script
     % is driven straight from the tif inventory (FRA -> FRAmap). Gating those
@@ -112,10 +118,10 @@ for i = 1:numel(families)
     % it had no tifs of that family -- which for an animal with map tifs is
     % simply false. Check the precondition each family actually has.
     if isempty(spec.suffixRaw)
-        srcFile = fullfile(dataPath,[animal '_tifFileList.mat']);
+        srcFile = fullfile(artifactDir,[animal '_tifFileList.mat']);
         [haveSrc,whyNot] = localHasMapTifs(srcFile);
     else
-        srcFile = fullfile(dataPath,[animal spec.suffixRaw]);
+        srcFile = fullfile(artifactDir,[animal spec.suffixRaw]);
         haveSrc = isfile(srcFile);
         whyNot  = 'no _raw table (this animal has no tifs of this family)';
     end
@@ -145,12 +151,12 @@ for i = 1:numel(families)
         set(0,'DefaultFigureVisible','off');
     end
     try
-        runFamilyScript(spec.processScript, dataPath, animal, scriptVars);
+        runFamilyScript(spec.processScript, dataPath, animal, scriptVars, artifactDir);
         rec.ok = isfile(proc);
         if ~rec.ok
             rec.reason = sprintf('%s ran but wrote no %s', spec.processScript, proc);
         elseif ~isempty(runLabel)
-            stampRunInfo(proc, runLabel, dataPath, animal, spec.family);
+            stampRunInfo(proc, runLabel, artifactDir, animal, spec.family);
         end
     catch ME
         rec.reason = sprintf('%s failed: %s', spec.processScript, ME.message);
@@ -199,9 +205,9 @@ end
 ok = true; why = '';
 end
 
-function runFamilyScript(scriptName, dataPath, animal, scriptVars) %#ok<INUSD>
-% Run the script in this isolated workspace. dataPath and animal are the two
-% variables the process* scripts look for; everything else they create stays
+function runFamilyScript(scriptName, dataPath, animal, scriptVars, artifactDir) %#ok<INUSD>
+% Run the script in this isolated workspace. dataPath, animal and artifactDir
+% are the variables the process* scripts look for; everything else they create stays
 % local to this function and never reaches the caller. scriptVars fields are
 % defined here too, so a script that reads a per-animal parameter from the
 % workspace (processCGC's PTfreqSelect) picks it up.
@@ -218,7 +224,7 @@ run(scriptPath);
 end
 
 
-function stampRunInfo(procFile, runLabel, dataPath, animal, family)
+function stampRunInfo(procFile, runLabel, artifactDir, animal, family)
 % Record which analysis run wrote this table, and off which ROI set.
 %
 % Every run writes the same filenames into the same animal folder, so a family
@@ -230,14 +236,14 @@ info = struct();
 info.runLabel  = char(runLabel);
 info.family    = char(family);
 info.animal    = char(animal);
-info.dataPath  = char(dataPath);
+info.dataPath  = char(artifactDir);
 info.when      = string(datetime('now','Format','uuuu-MM-dd HH:mm:ss'));
 info.roiSource = 'unknown';
 info.nROI      = NaN;
 info.roiFile   = '';
 info.repoSHA   = "";
 
-d = dir(fullfile(dataPath,[animal '_moCorrROI_*.mat']));
+d = dir(fullfile(artifactDir,[animal '_moCorrROI_*.mat']));
 if ~isempty(d)
     info.roiFile = d(1).name;
     try

@@ -50,6 +50,18 @@ catch
     animal = char(inputdlg('Enter animal ID:','Animal Input',[1 35],{'AA0000'}));
 end
 
+%% Where this analysis writes  (EDIT IF NEEDED)
+% Artifacts that depend on the ROIs and the analysis parameters go to
+% <dataPath>/analysis/<runName>/, so a second analysis of this animal cannot
+% overwrite the first. The raw tifs, the two legends and NoRMCorred/ are shared
+% by every analysis and stay where they are. Same layout the headless path
+% uses -- see animalPaths.
+%   runName = '';   % put artifacts loose in the animal folder (pre-2026-09)
+runName = sprintf('manualROI_%s',datestr(now,'yyyymmdd')); %#ok<TNOW1,DATST>
+P = animalPaths(dataPath,'run',runName,'create',true);
+fprintf('artifacts -> %s\n',P.artifacts);
+writeRunInfo(P,struct('roiSource','handDrawn','entryPoint','processAnimal2P'));
+
 %% 1. Get list of tif files for analysis and treatment info
 % DO NOT RUN IF RUNNING AGAIN FOR A DIFFERENT CELL TYPE
 
@@ -82,7 +94,7 @@ if any(FRAmapIDX)
 end
 [tifFiles.treatment] = treatment{:};
 
-save(fullfile(dataPath,[animal '_tifFileLegend.mat']),'tifFiles')
+save(P.legend,'tifFiles')
 
 %% 2. Split tifs into condition groups to be motion corrected separately
 % DO NOT RUN IF RUNNING AGAIN FOR A DIFFERENT CELL TYPE
@@ -91,7 +103,7 @@ save(fullfile(dataPath,[animal '_tifFileLegend.mat']),'tifFiles')
 
 %In case of REDO:
 % clear Ycon rawCatImg options_nonrigid NoRMCorreParams moCorrImgNonRigid shifts2 template2
-% load(fullfile(dataPath,[animal '_tifFileLegend.mat']),'tifFiles')
+% load(P.legend,'tifFiles')
 
 % --- Handle alternate-zoom acquisitions -----------------------------------
 % Standard acquisitions use one zoom (scanZoomFactor); both 256x256 and the
@@ -125,7 +137,7 @@ if any(altIDX)
             'Dropping %d alternate-zoom tif(s) (main zoom = %g): %s', ...
             sum(altIDX), zoomMain, strjoin(altNames,', '));
         tifFiles = tifFiles(~altIDX);
-        save(fullfile(dataPath,[animal '_tifFileLegend.mat']),'tifFiles')
+        save(P.legend,'tifFiles')
     end
 end
 clear zoomPerTif zoomMain altIDX altNames keepAlt btn hZ i
@@ -195,7 +207,7 @@ for c = 1:numel(condNames)
 end
 clear condNames cond grp g hi rm uG iu score primary newNames s subName c i
 
-save(fullfile(dataPath,[animal '_tifCondSplitLegend.mat']),'tifList')
+save(P.condSplit,'tifList')
 
 %% 3. Motion correction via NoRMCorre
 % DO NOT RUN IF RUNNING AGAIN FOR A DIFFERENT CELL TYPE
@@ -256,15 +268,15 @@ for k = 1:length(moCorN)
     
     clear options_nonrigid rawCattemp
 end
-save(fullfile(dataPath,'NoRMCorred',[animal '_NoRMCorreParams.mat']),'NoRMCorreParams')
+save(P.ncParams,'NoRMCorreParams')
 
 %% 3b. REDO / RESUME after motion correction
 % RUN THIS BLOCK (uncomment %{ %}) INSTEAD OF SECTION 3 when:
 %   - motion correction was already run and you are drawing ROIs for a new cell type
 %   - picking up from a saved session (moCorrImgNonRigid is not in workspace)
 % %{
-load(fullfile(dataPath,[animal '_tifCondSplitLegend.mat']),'tifList')
-load(fullfile(dataPath,[animal '_tifFileLegend.mat']),'tifFiles')
+load(P.condSplit,'tifList')
+load(P.legend,'tifFiles')
 % FRAmapIDX = contains({tifFiles.treatment},'map')';
 
 moCorN = fieldnames(tifList);
@@ -300,12 +312,9 @@ tifIDXinAllTifList = ismember({tifFiles.name}',{tifList.(moCorN{moCorSeqN}).name
 % and §9 map FISSA trials back to tifs by name.
 moCorTifNames = strrep({tifList.(moCorN{moCorSeqN}).name}','.tif','_NoRMCorre.tif');
 
-save([dataPath filesep ...
-    regexp(dataPath,'[A-Z]{2}\d{4}','match','once') ...
-    '_moCorrROI_' moCorN{moCorSeqN} '.mat'],...
+save(fullfile(P.artifacts,[animal '_moCorrROI_' moCorN{moCorSeqN} '.mat']),...
     'moCorROI','moCorSeqN','nTifs','tifIDXinAllTifList','moCorTifNames')
-disp([regexp(dataPath,'[A-Z]{2}\d{4}','match','once') ...
-    '_moCorrROI_' moCorN{moCorSeqN} '.mat saved to animal directory'])
+disp([animal '_moCorrROI_' moCorN{moCorSeqN} '.mat saved to ' P.artifacts])
 clear nTifs tifIDXinAllTifList moCorTifNames
 
 %% 5b. Reuse 256x256 ROIs on any 256x128 (10 Hz spont) condition  [AUTO]
@@ -341,7 +350,7 @@ for kc = find(isCrop)
              'Candidates: %s. Rename conditions so the source shares a treatment token.'],...
             tgtCond, strjoin(src256,', '));
     end
-    srcROIpath = fullfile(dataPath,[animal '_moCorrROI_' srcCond '.mat']);
+    srcROIpath = fullfile(P.artifacts,[animal '_moCorrROI_' srcCond '.mat']);
     if exist(srcROIpath,'file')~=2
         error('processAnimal2P:noSourceROI',...
             'Draw 256x256 ROIs for condition ''%s'' (sections 4-5) before remapping ''%s''.',...
@@ -350,7 +359,7 @@ for kc = find(isCrop)
     remapROIfile(srcROIpath,...
         fullfile(tifList.(srcCond)(1).folder, tifList.(srcCond)(1).name),...
         fullfile(tifList.(tgtCond)(1).folder, tifList.(tgtCond)(1).name),...
-        'outPath', fullfile(dataPath,[animal '_moCorrROI_' tgtCond '.mat']),...
+        'outPath', fullfile(P.artifacts,[animal '_moCorrROI_' tgtCond '.mat']),...
         'nTifs', numel(tifList.(tgtCond)),...
         'tifIDXinAllTifList', ismember({tifFiles.name}',{tifList.(tgtCond).name}'),...
         'moCorTifNames', strrep({tifList.(tgtCond).name}','.tif','_NoRMCorre.tif'),...
@@ -369,7 +378,7 @@ if exist('src256','var') && ~isempty(src256)
 else
     intersectConds = fieldnames(tifList);
 end
-intersectROIfiles(dataPath,animal,intersectConds,tifList,tifFiles)
+intersectROIfiles(P.artifacts,animal,intersectConds,tifList,tifFiles)
 clear intersectConds src256
 
 %% 7. Extract raw fluorescence per ROI and add to tifList
@@ -377,7 +386,7 @@ clear intersectConds src256
 
 for ROIfileN = 1:length(moCorN)
     clear moCorROI
-    temp = load(fullfile(dataPath,[animal '_moCorrROI_' moCorN{ROIfileN} '.mat']),...
+    temp = load(fullfile(P.artifacts,[animal '_moCorrROI_' moCorN{ROIfileN} '.mat']),...
         'moCorROI');
     moCorROI = temp.moCorROI;
     clear temp
@@ -394,9 +403,9 @@ clear moCorrImgNonRigid rawCatImg moCorROI
 %Save NoRMCorre params and file names of tifs used
 allTifFiles = tifFiles;
 try
-    save([dataPath filesep animal '_moCorr_Tifs_Params.mat'],'tifList','NoRMCorreParams','allTifFiles','-v7.3')
+    save(P.moCorrTifs,'tifList','NoRMCorreParams','allTifFiles','-v7.3')
 catch
-    save([dataPath filesep animal '_moCorr_Tifs_Params.mat'],'tifList','allTifFiles','-v7.3')
+    save(P.moCorrTifs,'tifList','allTifFiles','-v7.3')
 end
 
 %% 8. Neuropil correction via FISSA  [PYTHON STEP — run outside MATLAB]
@@ -404,18 +413,29 @@ end
 %   FISSA separates each ROI's signal from contaminating neuropil by
 %   decomposing the ROI trace and traces from surrounding neuropil rings.
 %
-%   Steps:
-%     1. Edit the animalDataPath variable in FISSAviaMatlab_prePostTreatment.py
-%     2. In a Python environment with FISSA installed, run:
-%          python FISSAviaMatlab_prePostTreatment.py
-%     3. FISSA reads ROI masks and the motion-corrected tifs from NoRMCorred/
-%        and writes output to NoRMCorred/FISSAoutput/matlab.mat
+%   RUN THIS SECTION: it prints the exact shell command for this run, with
+%   the ROI folder and output folder already filled in. Copy it into a shell
+%   with FISSA on the path, then resume at section 9.
 %
-%   Resume here (section 9) once matlab.mat exists.
+%   The motion-corrected tifs are shared by every analysis of this animal, so
+%   --tiff-folder always points at NoRMCorred/, while --roi-dir and --out-dir
+%   belong to THIS run.
+
+fissaScript = fullfile(fileparts(mfilename('fullpath')), ...
+    'FISSAviaMatlab_prePostTreatment.py');
+if P.isFlat
+    fissaShellCmd = sprintf('python "%s" "%s"',fissaScript,dataPath);
+else
+    fissaShellCmd = sprintf(...
+        'python "%s" "%s" --roi-dir "%s" --tiff-folder "%s" --out-dir "%s"', ...
+        fissaScript,dataPath,P.artifacts,P.moCorrDir,P.fissaDir);
+end
+fprintf(['\n--- FISSA (run outside MATLAB, then continue at section 9) ---\n' ...
+         '%s\n\n'],fissaShellCmd);
 
 %% 9. Parse FISSA output: separate map vs. stim trials, apply neuropil scaling
 
-fissaDir = fullfile(dataPath,'NoRMCorred','FISSAoutput');
+fissaDir = P.fissaDir;
 
 % fissaScaleFactor scales how aggressively neuropil is subtracted:
 %   corrected = ROI - scaleFactor * neuropil   (0.8 = common conservative default)
@@ -507,7 +527,7 @@ end
 % [fName,fPath] = uigetfile('*tifFileList.mat','Locate [ANIMAL]_tifFileList.mat...');
 % load(fullfile(fPath,fName))
 
-save(fullfile(dataPath,[animal '_tifFileList.mat']),...
+save(P.tifFileList,...
         'dataPath','FISSAoutput','tifFileList','fissaScaleFactor','-v7.3')
 
 %% COMPLETE. YOU ARE NOW LEFT WITH MOTION AND NEUROPIL CORRECTED FLUORESCENCE TRACES FOR EACH ROI FOR EACH TIF
@@ -518,7 +538,8 @@ save(fullfile(dataPath,[animal '_tifFileList.mat']),...
 %% 10. Align stimulus parameters to corrected traces
 % Requires _Pulses.mat files co-located with tifs.
 % Writes one _raw table per stimulus family present.
-[pulseLegend2P,stimGroupIDX,ROIoutputTables] = stimParam2ROI(dataPath);
+[pulseLegend2P,stimGroupIDX,ROIoutputTables] = stimParam2ROI(dataPath, ...
+    'artifactDir',P.artifacts);
 
 %% 11. Per-animal dF/F and peak responses, per stimulus family
 % The _raw tables written above carry stimulus-aligned traces but no dF/F and
@@ -536,7 +557,8 @@ runPerStimProcessing = true;
 showPerStimPlots     = false;
 
 if runPerStimProcessing
-    stimProc = processAnimalStimFamilies(dataPath,'showPlots',showPerStimPlots);
+    stimProc = processAnimalStimFamilies(dataPath,'showPlots',showPerStimPlots, ...
+        'artifactDir',P.artifacts,'runLabel',runName);
 end
 
 %% COMPLETE (per animal). To compare condition groups:

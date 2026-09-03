@@ -63,7 +63,12 @@ if ~exist('animal','var') || isempty(animal)
     end
 end
 if ~exist('tifFileList','var')
-    listFile = fullfile(dataPath,[animal '_tifFileList.mat']);
+% Where this run's artifacts live. processAnimalStimFamilies defines it; run
+% by hand it defaults to dataPath, i.e. the flat layout. The *_Pulses.mat this
+% script reads are RAW and always come from dataPath.
+if ~exist('artifactDir','var') || isempty(artifactDir); artifactDir = dataPath; end
+
+    listFile = fullfile(artifactDir,[animal '_tifFileList.mat']);
     if ~isfile(listFile)
         error('processFRA:noTifFileList','Not found: %s',listFile);
     end
@@ -104,14 +109,14 @@ if ~exist('plotAllROI','var'); plotAllROI = true; end
 % end 
 
 FRAmap = FRAmap(tifFileList,pkPTsigSD,nFramesPostPulse,'SCALEDfissaFroi');
-save(fullfile(dataPath,[animal '_FRAmap.mat']),'dataPath','FRAmap','-v7.3')
+save(fullfile(artifactDir,[animal '_FRAmap.mat']),'dataPath','FRAmap','-v7.3')
 
 % Long-form (ROI x freq x dB) companion table. This is what the cohort path
 % consumes: aggregateStimGroup, validateStimGroup and groupN all work on
 % tables, so writing one here lets FRA use the same generic group machinery
 % as BPN and CGC rather than a parallel one.
 anmlROIbyFRA = FRAmap2table(FRAmap,animal);
-save(fullfile(dataPath,[animal '_anmlROI_FRAtable.mat']), ...
+save(fullfile(artifactDir,[animal '_anmlROI_FRAtable.mat']), ...
     'dataPath','anmlROIbyFRA','-v7.3')
 %% PLOT OUTPUT | Sig Responses
 

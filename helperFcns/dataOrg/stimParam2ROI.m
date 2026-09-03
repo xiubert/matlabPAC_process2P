@@ -19,6 +19,9 @@ function [pulseLegend2P,stimGroupIDX,outputTables] = stimParam2ROI(dataPath,opts
 %
 %   Inputs:
 %   Name-value:
+%     artifactDir - where the ROI files, _tifFileList.mat and the output
+%                  tables live. Default '' = dataPath. The *_Pulses.mat are
+%                  raw and are always read from dataPath. See animalPaths.
 %     excludeNeg - forwarded to anmlROIbyStimTable, which screens multi-pulse
 %                  families (BPN) for movement artifacts and blanks failing
 %                  epochs. Default true, the same default that function has.
@@ -81,7 +84,16 @@ arguments
     dataPath (1,:) char
     opts.excludeNeg (1,1) logical = true   % movement/dropout screening in
                                            % anmlROIbyStimTable; see its header
+    opts.artifactDir (1,:) char = ''       % where ROI files, tifFileList and
+                                           % the output tables live; '' =
+                                           % dataPath. See animalPaths.
 end
+
+% The pulse files are RAW and always sit beside the tifs; everything this
+% function reads or writes besides them belongs to one analysis run.
+artifactDir = opts.artifactDir;
+if isempty(artifactDir); artifactDir = dataPath; end
+if ~isfolder(artifactDir); mkdir(artifactDir); end
 
 outputTables = cell(0);
 
@@ -100,11 +112,11 @@ animal = regexp(dataPath,'[A-Z]{2}\d{4}','match','once');
 % Membership is required (not count alone) because two conditions can share an
 % ROI count; resolving by count would risk labelling a group's traces with the
 % wrong condition's ROI ID order.
-roiFiles = dir(fullfile(dataPath,[animal '_moCorrROI_*.mat']));
+roiFiles = dir(fullfile(artifactDir,[animal '_moCorrROI_*.mat']));
 roiSets = cell(numel(roiFiles),1);
 roiTifs = cell(numel(roiFiles),1);   % original tif names each ROI set covers
 for rf = 1:numel(roiFiles)
-    Srf = load(fullfile(dataPath,roiFiles(rf).name),'moCorROI','moCorTifNames');
+    Srf = load(fullfile(artifactDir,roiFiles(rf).name),'moCorROI','moCorTifNames');
     roiSets{rf} = Srf.moCorROI;
     if isfield(Srf,'moCorTifNames')
         % stored as moCorr basenames (<orig>_NoRMCorre.tif); strip to originals
@@ -116,12 +128,12 @@ end
 roiCounts = cellfun(@numel,roiSets);
 clear Srf rf
 
-load(fullfile(dataPath,[animal '_tifFileList.mat']),'tifFileList')
+load(fullfile(artifactDir,[animal '_tifFileList.mat']),'tifFileList')
 
 % get pulse name for each tif
 pulseLegend2P = tifPulseLegend2P(dataPath);
 
-save(fullfile(dataPath,[animal '_pulseLegend2P.mat']),'pulseLegend2P','-v7.3')
+save(fullfile(artifactDir,[animal '_pulseLegend2P.mat']),'pulseLegend2P','-v7.3')
 
 % sort by stimulus group
 % for PT in contrast
@@ -145,7 +157,7 @@ stimGroupIDX.pupilReflexIDX.pulseLegend2P = contains({pulseLegend2P.pulseSet},'L
 stimGroupIDX.pupilReflexIDX.tifFileList = ismember({tifFileList.stim.name},...
     {pulseLegend2P(stimGroupIDX.pupilReflexIDX.pulseLegend2P).tif})';
 
-save(fullfile(dataPath,[animal '_stimGroupIDX.mat']),'stimGroupIDX','-v7.3')
+save(fullfile(artifactDir,[animal '_stimGroupIDX.mat']),'stimGroupIDX','-v7.3')
 
 %sort pure tone in contrast stims
 if sum(stimGroupIDX.ptStimIDX.tifFileList)>1
@@ -174,7 +186,7 @@ if sum(stimGroupIDX.ptStimIDX.tifFileList)>1
     outputTables{end+1} = 'stimTable';
     outputTables{end+1} = stimTable;
     
-    save(fullfile(dataPath,[animal '_anmlROI_CGCstimTable_raw.mat']),...
+    save(fullfile(artifactDir,[animal '_anmlROI_CGCstimTable_raw.mat']),...
         'anmlROIbyStim','stimTable','tifStimParamTable',...
         'dataPath','-v7.3')
     catch ME
@@ -213,7 +225,7 @@ if sum(stimGroupIDX.BPNStimIDX.tifFileList)>1
     outputTables{end+1} = 'stimTable';
     outputTables{end+1} = stimTable;
     
-    save(fullfile(dataPath,[animal '_anmlROI_BPNstimTable_raw.mat']),...
+    save(fullfile(artifactDir,[animal '_anmlROI_BPNstimTable_raw.mat']),...
         'anmlROIbyStim','stimTable','tifStimParamTable',...
         'dataPath','-v7.3')
     catch ME
@@ -269,7 +281,7 @@ if sum(stimGroupIDX.spontStimIDX.tifFileList)>1
     outputTables{end+1} = 'stimTable';
     outputTables{end+1} = stimTable;
     
-    save(fullfile(dataPath,[animal '_anmlROI_SpontstimTable.mat']),...
+    save(fullfile(artifactDir,[animal '_anmlROI_SpontstimTable.mat']),...
         'anmlROIbyStim','stimTable','tifStimParamTable',...
         'dataPath','-v7.3')
     catch ME
@@ -307,7 +319,7 @@ if sum(stimGroupIDX.contrastChangeIDX.tifFileList)>1
     outputTables{end+1} = 'dContrastTable';
     outputTables{end+1} = dContrastTable;
     
-    save(fullfile(dataPath,[animal '_anmlROI_dContrastTable.mat']),'anmlROIdContrast','dContrastTable',...
+    save(fullfile(artifactDir,[animal '_anmlROI_dContrastTable.mat']),'anmlROIdContrast','dContrastTable',...
         'dContrastTifParamTable','dataPath','tifFileList','fissaScaleFactor',...
         'stimGroupIDX','pulseLegend2P','-v7.3')
     catch ME

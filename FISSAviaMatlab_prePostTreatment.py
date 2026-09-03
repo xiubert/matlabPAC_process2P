@@ -21,9 +21,16 @@ group, using EXPLICIT per-image ROI lists (no reliance on folder sort order).
 
 Usage:
     python FISSAviaMatlab_prePostTreatment.py [animalDataPath]
-(animalDataPath defaults to the hardcoded path below if no arg is given.)
+    python FISSAviaMatlab_prePostTreatment.py ANIMAL \
+        --roi-dir ANIMAL/analysis/<run> --out-dir ANIMAL/analysis/<run>/FISSAoutput
+
+The single-argument form is unchanged. --roi-dir / --tiff-folder / --out-dir
+exist because the motion-corrected tifs are shared by every analysis of an
+animal while the ROIs and the output belong to one run, so they cannot always
+live under the same folder.
 """
 
+import argparse
 import os
 import sys
 import glob
@@ -32,14 +39,37 @@ from scipy.io import loadmat
 import numpy as np
 import fissa
 
-# ---- animal data path: CLI arg overrides the default ------------------------
+# ---- paths ------------------------------------------------------------------
+# The three locations used to be derived from one argument, which forced the
+# ROI files, the motion-corrected tifs and the output to share a folder. They
+# have different lifetimes: the tifs are shared by every analysis of an animal,
+# while the ROIs and the output belong to one particular run. Each can now be
+# given separately; every one defaults to the old derivation, so the original
+# single-argument call still behaves exactly as before.
 DEFAULT_PATH = '/media/user/sutter2P_data/Data/AA0343'
-animalDataPath = sys.argv[1] if len(sys.argv) > 1 else DEFAULT_PATH
 
-tiff_folder = os.path.join(animalDataPath, 'NoRMCorred')
+ap = argparse.ArgumentParser(description=__doc__,
+                             formatter_class=argparse.RawDescriptionHelpFormatter)
+ap.add_argument('animalDataPath', nargs='?', default=DEFAULT_PATH,
+                help='animal folder; the other paths default relative to it')
+ap.add_argument('--roi-dir', default=None,
+                help='folder holding *_moCorrROI_*.mat (default: animalDataPath)')
+ap.add_argument('--tiff-folder', default=None,
+                help='folder holding the *_NoRMCorre.tif (default: '
+                     'animalDataPath/NoRMCorred). Shared across runs.')
+ap.add_argument('--out-dir', default=None,
+                help='where FISSA output is written (default: '
+                     'tiff-folder/FISSAoutput). Belongs to one run.')
+args = ap.parse_args()
+
+animalDataPath = args.animalDataPath
+roi_dir = args.roi_dir or animalDataPath
+tiff_folder = args.tiff_folder or os.path.join(animalDataPath, 'NoRMCorred')
 if not os.path.isdir(tiff_folder):
-    raise NotADirectoryError('NoRMCorred folder not found: %s' % tiff_folder)
-output_folder = os.path.join(tiff_folder, 'FISSAoutput')
+    raise NotADirectoryError('motion-corrected tif folder not found: %s' % tiff_folder)
+if not os.path.isdir(roi_dir):
+    raise NotADirectoryError('ROI folder not found: %s' % roi_dir)
+output_folder = args.out_dir or os.path.join(tiff_folder, 'FISSAoutput')
 os.makedirs(output_folder, exist_ok=True)
 
 
@@ -65,9 +95,9 @@ def parse_roi_file(path):
 
 
 # ---- build per-image (path, roi-set) pairs, keyed by ROI count -------------
-roi_files = sorted(glob.glob(os.path.join(animalDataPath, '*_moCorrROI_*.mat')))
+roi_files = sorted(glob.glob(os.path.join(roi_dir, '*_moCorrROI_*.mat')))
 if not roi_files:
-    raise FileNotFoundError('No *_moCorrROI_*.mat in %s' % animalDataPath)
+    raise FileNotFoundError('No *_moCorrROI_*.mat in %s' % roi_dir)
 
 groups = {}   # count -> list of (image_path, roi_set, basename)
 for rf in roi_files:

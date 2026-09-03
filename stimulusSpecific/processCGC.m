@@ -81,8 +81,13 @@ if ~exist('animal','var') || isempty(animal)
     animal = regexp(dataPath,'[A-Z]{2}\d{4}','match','once');
 end
 
-rawFile  = fullfile(dataPath,[animal '_anmlROI_CGCstimTable_raw.mat']);
-procFile = fullfile(dataPath,[animal '_anmlROI_CGCstimTable.mat']);
+% Where this run's artifacts live. processAnimalStimFamilies defines it; run
+% by hand it defaults to dataPath, i.e. the flat layout. The *_Pulses.mat this
+% script reads are RAW and always come from dataPath.
+if ~exist('artifactDir','var') || isempty(artifactDir); artifactDir = dataPath; end
+
+rawFile  = fullfile(artifactDir,[animal '_anmlROI_CGCstimTable_raw.mat']);
+procFile = fullfile(artifactDir,[animal '_anmlROI_CGCstimTable.mat']);
 
 if isfile(rawFile)
     load(rawFile)
