@@ -39,8 +39,13 @@ end
 % is exactly what processAnimalStimFamilies and any batch caller does -- meant
 % the table was never read and the script ran on whatever anmlROIbyStim
 % happened to be left over from a previous run.
-rawFile  = fullfile(dataPath,[animal '_anmlROI_BPNstimTable_raw.mat']);
-procFile = fullfile(dataPath,[animal '_anmlROI_BPNstimTable.mat']);
+% Where this run's artifacts live. processAnimalStimFamilies defines it; run
+% by hand it defaults to dataPath, i.e. the flat layout. The *_Pulses.mat this
+% script reads are RAW and always come from dataPath.
+if ~exist('artifactDir','var') || isempty(artifactDir); artifactDir = dataPath; end
+
+rawFile  = fullfile(artifactDir,[animal '_anmlROI_BPNstimTable_raw.mat']);
+procFile = fullfile(artifactDir,[animal '_anmlROI_BPNstimTable.mat']);
 if ~isfile(rawFile)
     % No legacy fallback to the processed file here, unlike processCGC:
     % combineDiffOnset below onset-aligns the raw F columns in place, so

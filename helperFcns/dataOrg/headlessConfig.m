@@ -99,17 +99,31 @@ function cfg = headlessConfig(dataPath,varargin)
 %                     against hand-drawn ROIs on TO0003.
 %
 %   Name-value -- FISSA (§8-9)
-%     'fissaCmd'      shell command template for the Python step; '%s' is
-%                     replaced by dataPath. Default runs the repo's
+%     'fissaCmd'      shell command template for the Python step. Its single
+%                     '%s' is replaced by the whole ARGUMENT string -- the
+%                     quoted data path, plus --roi-dir/--tiff-folder/--out-dir
+%                     when the run uses the analysis/<run>/ layout. Those must
+%                     sit INSIDE any quoted shell wrapper, or they reach the
+%                     shell rather than the script. Default runs the repo's
 %                     FISSAviaMatlab_prePostTreatment.py in conda env
 %                     'env_fissa'. Set '' to skip the call and assume the
 %                     output already exists.
 %     'fissaScaleFactor'  neuropil subtraction scale. Default 0.8.
 %
-%   Name-value -- provenance
+%   Name-value -- run isolation and provenance
+%     'run'           name of this analysis run. Artifacts that depend on the
+%                     ROI set and the analysis parameters go to
+%                     <dataPath>/analysis/<run>/ instead of into the animal
+%                     folder, so two analyses of the same animal cannot
+%                     overwrite each other. The raw tifs, the two legends and
+%                     NoRMCorred/ are shared and stay where they are. Default
+%                     '' = the flat legacy layout. See animalPaths.
+%     'artifactDir'   put artifacts in this exact folder; wins over 'run'.
 %     'runLabel'      name of this analysis run. Stamped into every processed
 %                     table (see processAnimalStimFamilies), so aggregation can
-%                     refuse a table left behind by an earlier run. Default ''.
+%                     refuse a table left behind by an earlier run. Defaults to
+%                     'run' when that is given, so the folder and the stamp
+%                     cannot disagree.
 %
 %   Name-value -- stimulus alignment (§10)
 %     'excludeNeg'    forwarded to stimParam2ROI -> anmlROIbyStimTable, which
@@ -171,6 +185,8 @@ addParameter(p,'roi',struct(),@isstruct);
 addParameter(p,'fissaCmd','default',@(x)ischar(x)||isstring(x));
 addParameter(p,'fissaScaleFactor',0.8,@(x)isnumeric(x)&&isscalar(x));
 addParameter(p,'runLabel','',@(x) ischar(x)||isstring(x));
+addParameter(p,'run','',@(x) ischar(x)||isstring(x));
+addParameter(p,'artifactDir','',@(x) ischar(x)||isstring(x));
 addParameter(p,'excludeNeg',true,@islogical);
 addParameter(p,'runStimFamilies',true,@islogical);
 addParameter(p,'runFRAmap',true,@islogical);
@@ -205,6 +221,18 @@ else
 end
 cfg.treatmentName = char(cfg.treatmentName);
 cfg.runLabel      = char(cfg.runLabel);
+cfg.run           = char(cfg.run);
+cfg.artifactDir   = char(cfg.artifactDir);
+
+% One name does both jobs: the folder artifacts go in, and the provenance
+% stamp. Giving a run without a label (or vice versa) would let the two drift
+% apart, so each fills in for the other.
+if isempty(cfg.run) && ~isempty(cfg.runLabel) && isempty(cfg.artifactDir)
+    cfg.run = cfg.runLabel;
+elseif ~isempty(cfg.run) && isempty(cfg.runLabel)
+    cfg.runLabel = cfg.run;
+end
+cfg.paths = animalPaths(cfg.dataPath,'run',cfg.run,'artifactDir',cfg.artifactDir);
 
 %--- stages ---------------------------------------------------------------
 st = cfg.stages(:)';
@@ -237,8 +265,11 @@ if strcmp(char(cfg.fissaCmd),'default')
     repoRoot = fileparts(fileparts(mfilename('fullpath')));   % helperFcns/..
     repoRoot = fileparts(repoRoot);
     pyScript = fullfile(repoRoot,'FISSAviaMatlab_prePostTreatment.py');
+    %the %s is the whole ARGUMENT STRING, not just dataPath: the per-run
+    %--roi-dir/--tiff-folder/--out-dir have to land inside the quoted bash -lc
+    %command, or they are passed to bash instead of to the script
     cfg.fissaCmd = sprintf(...
-        'bash -lc ''source ~/miniconda3/bin/activate env_fissa && python "%s" "%%s"''',...
+        'bash -lc ''source ~/miniconda3/bin/activate env_fissa && python "%s" %%s''',...
         pyScript);
 else
     cfg.fissaCmd = char(cfg.fissaCmd);

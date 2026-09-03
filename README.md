@@ -6,7 +6,9 @@ ROIs come either from **you, drawing them** (`processAnimal2P`) or from
 **Cellpose, unattended** (`processAnimal2Pheadless`). Both feed the same
 downstream pipeline.
 
-📖 **[usage.md](usage.md) — what to type, in what order, for either path.**
+📖 **[usage.md](usage.md) — what to type, in what order, for either path**, and
+[where artifacts land](usage.md#where-artifacts-are-written): pass a run name and
+each analysis gets its own `analysis/<run>/` folder instead of overwriting the last.
 This README is the reference for what each piece *does*.
 
 ---
@@ -477,7 +479,9 @@ helperFcns/
                         (gatherCellTraces, gatherCellValues), between-cell
                         mean/SEM (cohortMeanSEM), guarded statistics
                         (cohortStat), figure n-stamps (annotateN)
-  dataOrg/            — FISSA output parsing, tifFileList assembly, stimulus table
+  dataOrg/            — artifact layout resolution (animalPaths) and optional
+                        migration (migrateAnimalArtifacts);
+                        FISSA output parsing, tifFileList assembly, stimulus table
                         builders (stimParam2ROI, combineDiffOnset); condition-group
                         aggregation (stimGroupSpec, aggregateStimGroup,
                         validateStimGroup, loadStimGroup); per-animal

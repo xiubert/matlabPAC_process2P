@@ -33,6 +33,8 @@ function FRAout = runFRA(dataPath,opts)
 %                        FRAmap2table -- the file aggregateStimGroup reads.
 %                        Default true.
 %     'overwrite'        redo when <animal>_FRAmap.mat exists. Default true.
+%     'artifactDir'      where _tifFileList.mat is read and the outputs are
+%                        written. Default '' = dataPath. See animalPaths.
 %
 %   Output
 %     FRAout  the FRAmap struct that was saved.
@@ -49,6 +51,7 @@ arguments
     opts.showPlots        (1,1) logical = false
     opts.writeTable       (1,1) logical = true
     opts.overwrite        (1,1) logical = true
+    opts.artifactDir      (1,:) char = ''
 end
 
 if ~isfolder(dataPath)
@@ -62,7 +65,9 @@ if isempty(animal)
     error('runFRA:noAnimal','Could not derive an animal ID from %s',dataPath);
 end
 
-outFile = fullfile(dataPath,[animal '_FRAmap.mat']);
+artifactDir = opts.artifactDir;
+if isempty(artifactDir); artifactDir = dataPath; end
+outFile = fullfile(artifactDir,[animal '_FRAmap.mat']);
 if isfile(outFile) && ~opts.overwrite
     S = load(outFile,'FRAmap');
     FRAout = S.FRAmap;
@@ -70,7 +75,7 @@ if isfile(outFile) && ~opts.overwrite
     return
 end
 
-listFile = fullfile(dataPath,[animal '_tifFileList.mat']);
+listFile = fullfile(artifactDir,[animal '_tifFileList.mat']);
 if ~isfile(listFile)
     error('runFRA:noTifFileList','Not found: %s',listFile);
 end
@@ -118,7 +123,7 @@ if opts.writeTable
     else
         try
             T = FRAmap2table(FRAout,animal); %#ok<NASGU>
-            tblFile = fullfile(dataPath,[animal '_anmlROI_FRAtable.mat']);
+            tblFile = fullfile(artifactDir,[animal '_anmlROI_FRAtable.mat']);
             save(tblFile,'T','dataPath','-v7.3');
             fprintf('runFRA: wrote %s\n',tblFile);
         catch ME

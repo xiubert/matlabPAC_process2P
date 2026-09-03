@@ -14,8 +14,9 @@ guide: what to type, in what order, and what to check. For what each function
 | when to use it | few animals; a field you want to judge yourself; anything you'll compare to previously published counts | cohorts; re-runs; anything where consistency between animals matters more than your judgement on any one |
 
 Both write the **same artefacts under the same names**, so you can start an
-animal in one and finish it in the other. What they cannot do is *coexist* —
-see [Both paths write the same filenames](#both-paths-write-the-same-filenames).
+animal in one and finish it in the other. To keep two analyses side by side,
+give each a run name — see
+[Where artifacts are written](#where-artifacts-are-written).
 
 ---
 
@@ -277,19 +278,110 @@ group.
 
 ---
 
-## Both paths write the same filenames
+## Where artifacts are written
 
-`<animal>_moCorrROI_*.mat`, `_tifFileList.mat`, `_anmlROI_*.mat` and the rest
-are **not** namespaced by ROI source. A headless run **overwrites hand-drawn
-ROI files**.
+Everything the pipeline touches falls into one of three groups, and they have
+different lifetimes:
 
-If you want to keep both, or compare them:
+| | what | lifetime |
+|---|---|---|
+| **raw** | `*.tif`, `*_Pulses.mat`, `*_PulseParams.mat` | never written by the pipeline |
+| **shared** | both legends, `NoRMCorred/*_NoRMCorre.tif`, `_NoRMCorreParams.mat` | one per animal — expensive, identical for every analysis |
+| **per-run** | `_moCorrROI_*`, `FISSAoutput/`, `_moCorr_Tifs_Params`, `_tifFileList`, `_pulseLegend2P`, `_stimGroupIDX`, `_anmlROI_*`, `_FRAmap`, QC images | one per analysis |
 
-1. Back up the animal folder's `.mat` artefacts first.
-2. Run one path to completion, then copy its artefacts somewhere per-run.
-3. Clean the animal folder and run the other.
+Pass a **run name** and the per-run group goes into its own folder:
 
-Treat the animal folder as scratch space, not as the record of any particular
-run. `etc/runTOMTpipeline.m` is a worked example of exactly this discipline
-(clean → run → harvest to `runArtifacts/<runName>/`), if you need to do it over
-a cohort.
+```matlab
+processAnimal2Pheadless('/data/TO0007','run','cellpose_20260903');
+```
+
+```
+TO0007/
+  TO0007AAAA_00031_00001.tif           raw
+  TO0007AAAA_00031_00001_Pulses.mat    raw
+  TO0007_tifFileLegend.mat             shared
+  TO0007_tifCondSplitLegend.mat        shared
+  NoRMCorred/                          shared — never duplicated
+    *_NoRMCorre.tif
+    TO0007_NoRMCorreParams.mat
+  analysis/
+    handdrawn_20260903/
+      TO0007_moCorrROI_all.mat
+      TO0007_tifFileList.mat
+      TO0007_anmlROI_BPNstimTable.mat
+      TO0007_ROIoverlay_all.png
+      FISSAoutput/
+    cellpose_20260903/
+      …the same set, independently…
+```
+
+Two analyses of the same animal now cannot touch each other. `NoRMCorred/`
+stays shared because motion correction depends only on the acquisition — it
+would be wasteful and slow to redo per run.
+
+`animalPaths` is the single source of truth for this; no function builds an
+artifact path by hand.
+
+```matlab
+P = animalPaths('/data/TO0007','run','cellpose_20260903');
+P.artifacts   % .../TO0007/analysis/cellpose_20260903
+P.fissaDir    % .../analysis/cellpose_20260903/FISSAoutput
+P.moCorrDir   % .../TO0007/NoRMCorred                    (shared)
+P.legend      % .../TO0007/TO0007_tifFileLegend.mat      (shared)
+```
+
+### Without a run name, nothing changes
+
+Omit `run` and every artifact goes into the animal folder exactly as it always
+has. Existing folders keep working untouched, and so does anything with a
+hardcoded path. **The layout is opt-in.**
+
+The one thing to know about the flat layout is what it cannot do: a second run
+overwrites the first, silently. A headless run overwrites hand-drawn
+`_moCorrROI_*.mat`; a re-run with different parameters overwrites the previous
+tables; and if a stim family *fails*, its table is simply left behind from the
+previous run — the dangerous case, because the folder then holds a mixture and
+looks perfectly normal.
+
+### Run name, provenance and group files
+
+The run name does double duty — it names the folder **and** stamps the tables,
+so the two cannot drift apart:
+
+```matlab
+processAnimal2Pheadless(dp,'run','cellpose_20260903');       % runLabel follows
+aggregateStimGroup(manifest,'requireRun','cellpose_20260903');
+```
+
+Point aggregation at a run with `tableDir`, and keep each run's group files
+apart with `outDir`:
+
+```matlab
+manifest.tableDir = fullfile('analysis','cellpose_20260903');
+manifest.outDir   = '/data/cohort/aggregate_cellpose_20260903';
+```
+
+### Migrating an existing animal
+
+Optional — a flat folder reads fine. If you want one layout everywhere:
+
+```matlab
+migrateAnimalArtifacts('/data/TO0007')                % dry run, lists what would move
+migrateAnimalArtifacts('/data/TO0007','apply',true)   % -> analysis/legacy/
+```
+
+It moves only the per-run group; raw, the legends and `NoRMCorred/*.tif` stay
+put. **Back up first** — it moves rather than copies, so anything still
+expecting the flat layout will stop finding its inputs.
+
+### Comparing two ROI sources
+
+With run names this is just two runs; nothing needs cleaning between them:
+
+```matlab
+processAnimal2Pheadless(dp,'run','handdrawn_20260903','stages',[6 11]);
+processAnimal2Pheadless(dp,'run','cellpose_20260903');
+```
+
+Run the hand-drawn path first only if its ROI files live in the flat folder —
+a headless run without a run name would overwrite them.
