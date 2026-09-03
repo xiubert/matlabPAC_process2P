@@ -56,7 +56,8 @@ function out = cellposeROIset(dataPath,animal,tifList,tifFiles,opts)
 %                     defaults here set diameter 15 and cellprob -1, which is
 %                     what the TO0003 calibration settled on; cpsam's
 %                     automatic sizing fails outright on a smoothed mean.
-%     'saveMeanTif'   write <animal>_cellposeMean.tif for QC. Default true.
+%     'saveMeanTif'   write NoRMCorred/<animal>_cellposeMean.tif for QC.
+%                     Default true.
 %     'verbose'       Default true.
 %
 %   Output (struct)
@@ -244,7 +245,10 @@ roiParams = struct('mode',opts.mode,'minVotes',opts.minVotes,...
 meanTifPath = '';
 if opts.saveMeanTif
     srcTif = refTif(tifList,conds{refIdx},dataPath);
-    meanTifPath = fullfile(dataPath,[animal '_cellposeMean.tif']);
+    %into NoRMCorred/ rather than the animal folder: a derived tif sitting
+    %next to the acquisitions would be picked up by the <animal>*.tif
+    %inventory glob and processed as if it were a recording
+    meanTifPath = fullfile(dataPath,'NoRMCorred',[animal '_cellposeMean.tif']);
     try
         if isfile(srcTif)
             writeTifWithHeader(fillNaN(sessionMean),meanTifPath,srcTif,...

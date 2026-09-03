@@ -568,10 +568,20 @@ end
 % ========================================================================
 function r = stage9(cfg,F,W)
 %parse FISSA output into tifFileList, applying the neuropil scale factor
-tifList = W.tifList;
-if isempty(tifList) && isfile(F.moCorrTifs)
+%must be the tifList stage 7 wrote: FISSAoutput2tifFileList reads
+%moCorRawFroi off each entry, and the condition-split legend's copy has no
+%fluorescence in it
+if isfile(F.moCorrTifs)
     S = load(F.moCorrTifs,'tifList');
     tifList = S.tifList;
+else
+    tifList = W.tifList;
+end
+if isempty(tifList) || ~isfield(tifList.(subsref(fieldnames(tifList),...
+        substruct('{}',{1}))),'moCorRawFroi')
+    error('processAnimal2Pheadless:noRawF',...
+        ['Stage 9 needs the raw F extracted in stage 7 (%s). Run stage 7 '...
+         'first.'],F.moCorrTifs);
 end
 fissaScaleFactor = cfg.fissaScaleFactor;
 

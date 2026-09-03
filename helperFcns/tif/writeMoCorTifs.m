@@ -18,14 +18,23 @@ for fileNo = 1:length(files)
     for k = fStart:fEnd
         frameNo = frameNo+1;
         for tagID = 1:length(tagList)
+            % Compression is deliberately NOT inherited. ScanImage writes some
+            % acquisitions LZW-compressed, and copying that tag makes the
+            % motion-corrected output LZW too -- which MATLAB reads back fine
+            % but other consumers do not: tifffile (so FISSA) needs the
+            % optional imagecodecs package, and ScanImageTiffReader returns
+            % garbled pixels. Both failures are silent-ish and far from here.
+            % Uncompressed costs disk and nothing else.
             if ~any(contains({'SubFileType','StripOffsets','YCbCrSubSampling',...
-                    'NumberOfInks','MinSampleValue','MaxSampleValue'},tagList{tagID}))
+                    'NumberOfInks','MinSampleValue','MaxSampleValue',...
+                    'Compression'},tagList{tagID}))
                 try
                     setTag(tifWrite,tagList{tagID},hInputTif.getTag(tagList{tagID}));
                 catch
                 end
             end
         end
+        setTag(tifWrite,'Compression',Tiff.Compression.None);
         setTag(tifWrite,'BitsPerSample',tmpImInfo(1).BitsPerSample);
         setTag(tifWrite,'SampleFormat',Tiff.SampleFormat.Int);
         setTag(tifWrite,'PlanarConfiguration',Tiff.PlanarConfiguration.Chunky);

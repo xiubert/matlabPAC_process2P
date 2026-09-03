@@ -23,10 +23,25 @@ function cfg = headlessConfig(dataPath,varargin)
 %                     Default [] = every tif is post, which is almost never
 %                     what you want, so it warns.
 %     'mapTifs'       which tifs are FRA/BF maps. Same selector forms, plus
-%                     'auto' (default): bytes > mapBytesThreshold, the same
-%                     heuristic the interactive dialog prints as a hint.
+%                     two rules:
+%                       'auto' (default) - read each tif's _Pulses.mat and
+%                          take those whose pulseSet contains
+%                          mapPulseSetToken. This is the same
+%                          contains(pulseSet,...) idiom stimParam2ROI uses to
+%                          separate every other family, and it is
+%                          authoritative. Falls back to 'bytes' (with a
+%                          warning) when there are no pulse files.
+%                       'bytes'  - bytes > mapBytesThreshold. This is only
+%                          the HINT the interactive dialog prints before a
+%                          human picks; it is not reliable on its own. On
+%                          TO0003 it flags all 8 real map tifs but also 5
+%                          stim tifs, because the 85.6 MB BPN tifs sit just
+%                          under the 94.2 MB maps. Use it only when pulse
+%                          files are unavailable.
 %                     Pass [] for none.
-%     'mapBytesThreshold'  Default 11e6.
+%     'mapPulseSetToken'   substring identifying a mapping pulse set.
+%                     Default 'Mapping' (e.g. 'JC_PureTone_2PMapping').
+%     'mapBytesThreshold'  Default 11e6; only used by the 'bytes' rule.
 %
 %   Name-value -- condition split (§2)
 %     'condFilters'   treatment substrings that define motion-correction
@@ -105,6 +120,7 @@ addParameter(p,'treatmentName','',@(x)ischar(x)||isstring(x));
 addParameter(p,'preTifs',[]);
 addParameter(p,'mapTifs','auto');
 addParameter(p,'mapBytesThreshold',11e6,@(x)isnumeric(x)&&isscalar(x));
+addParameter(p,'mapPulseSetToken','Mapping',@(x)ischar(x)||isstring(x));
 addParameter(p,'condFilters',{},@(x)isempty(x)||iscellstr(x)||isstring(x)); %#ok<ISCLSTR>
 addParameter(p,'altZoomPolicy','drop',@(s)any(strcmpi(s,{'drop','keep','error'})));
 addParameter(p,'funcChan',2,@(x)isnumeric(x)&&isscalar(x));
@@ -126,6 +142,17 @@ cfg.animal   = char(cfg.animal);
 if isempty(cfg.animal)
     error('headlessConfig:noAnimal',...
         'Could not derive an animal ID from %s. Pass ''animal'' explicitly.',dataPath);
+end
+%stimParam2ROI and the process* scripts re-derive the animal ID from the
+%FOLDER NAME, so an explicit 'animal' that the path does not contain gets the
+%early stages right and then fails at stage 10 with a confusing missing-file
+%error. Say so here instead.
+if isempty(regexp(cfg.dataPath,regexptranslate('escape',cfg.animal),'once'))
+    warning('headlessConfig:animalNotInPath',...
+        ['animal ''%s'' does not appear in the data path (%s). Stages 1-9 will '...
+         'use it, but stimParam2ROI and the per-stim scripts re-derive the ID '...
+         'from the folder name and will fail. Rename the folder to contain the '...
+         'animal ID before running stages 10-11.'],cfg.animal,cfg.dataPath);
 end
 if isempty(char(cfg.tifPattern))
     cfg.tifPattern = [cfg.animal '*.tif'];
@@ -171,6 +198,19 @@ end
 %--- resolve tif selectors against what is on disk -----------------------
 tifFiles = dir(fullfile(cfg.dataPath,cfg.tifPattern));
 tifFiles = tifFiles(~[tifFiles.isdir]);
+%derived tifs this pipeline writes match <animal>*.tif too; treating one as a
+%recording would put a mean projection into a motion-correction group
+derived = {'_cellposeMean.tif','_mean.tif','_NoRMCorre.tif','_cp_masks.tif'};
+isDerived = false(numel(tifFiles),1);
+for k = 1:numel(derived)
+    isDerived = isDerived | endsWith({tifFiles.name}',derived{k});
+end
+if any(isDerived)
+    warning('headlessConfig:derivedTifs',...
+        'Ignoring %d derived tif(s) in the animal folder: %s',...
+        nnz(isDerived),strjoin({tifFiles(isDerived).name},', '));
+    tifFiles = tifFiles(~isDerived);
+end
 cfg.nTifsFound = numel(tifFiles);
 if isempty(tifFiles)
     warning('headlessConfig:noTifs',...
@@ -197,9 +237,24 @@ else
 end
 
 %FRA map tifs
-if ischar(cfg.mapTifs) && strcmpi(cfg.mapTifs,'auto')
-    cfg.mapIDX = [tifFiles.bytes]' > cfg.mapBytesThreshold;
-    cfg.mapSelector = sprintf('auto (bytes > %g)',cfg.mapBytesThreshold);
+byteRule = @() deal([tifFiles.bytes]' > cfg.mapBytesThreshold,...
+    sprintf('bytes > %g',cfg.mapBytesThreshold));
+if ischar(cfg.mapTifs) && any(strcmpi(cfg.mapTifs,{'auto','pulses'}))
+    [cfg.mapIDX,cfg.mapSelector] = mapByPulseSet(cfg,tifFiles);
+    if isempty(cfg.mapIDX)
+        if strcmpi(cfg.mapTifs,'pulses')
+            error('headlessConfig:noPulseFiles',...
+                ['mapTifs = ''pulses'' but no _Pulses.mat were found in %s.'],...
+                cfg.dataPath);
+        end
+        warning('headlessConfig:noPulseFiles',...
+            ['No _Pulses.mat in %s, so map tifs fall back to the size '...
+             'heuristic. That is the interactive dialog''s HINT, not a rule -- '...
+             'check the result, or pass mapTifs explicitly.'],cfg.dataPath);
+        [cfg.mapIDX,cfg.mapSelector] = byteRule();
+    end
+elseif ischar(cfg.mapTifs) && strcmpi(cfg.mapTifs,'bytes')
+    [cfg.mapIDX,cfg.mapSelector] = byteRule();
 else
     cfg.mapIDX = resolveSelector(cfg.mapTifs,tifFiles,'mapTifs');
     cfg.mapSelector = 'explicit';
@@ -216,6 +271,24 @@ if cfg.verbose
 end
 end
 
+% ------------------------------------------------------------------------
+function [idx,label] = mapByPulseSet(cfg,tifFiles)
+%FRA map tifs are the ones whose pulse set is a tone-mapping set. This is the
+%same contains(pulseSet,...) test stimParam2ROI uses for BPN, PTinContrast and
+%spont, so the families stay identified by one convention rather than two.
+idx = []; label = '';
+try
+    pl = tifPulseLegend2P(cfg.dataPath);
+catch
+    return
+end
+if isempty(pl) || ~isfield(pl,'pulseSet')
+    return
+end
+mapTif = {pl(contains(string({pl.pulseSet}),cfg.mapPulseSetToken)).tif};
+idx = ismember({tifFiles.name}',mapTif(:));
+label = sprintf('pulseSet contains ''%s''',cfg.mapPulseSetToken);
+end
 % ------------------------------------------------------------------------
 function idx = resolveSelector(sel,tifFiles,name)
 %accept indices, names, or a regular expression; always return a logical

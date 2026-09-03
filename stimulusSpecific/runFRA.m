@@ -82,6 +82,16 @@ if ~isfield(S,'tifFileList') || ~isfield(S.tifFileList,'map') || isempty(S.tifFi
 end
 tifFileList = S.tifFileList;
 
+%tifFileList.map(n).folder is whatever path the inventory was built on, often
+%a drive letter from another machine or a folder that has since moved. FRAmap
+%resolves _Pulses.mat relative to it, so repoint it at dataPath -- where the
+%tif list itself lives, alongside the tifs and their pulse files -- whenever
+%the stored path is not present here. A stored path that does exist is left
+%alone. Same rule as processFRA.
+if ~isfolder(tifFileList.map(1).folder)
+    [tifFileList.map.folder] = deal(dataPath);
+end
+
 %FRAmap is both a function and, by convention downstream, the variable name
 %of its output; keep them apart here so the call is unambiguous inside a
 %function workspace
