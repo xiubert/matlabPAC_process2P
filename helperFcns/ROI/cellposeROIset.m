@@ -56,6 +56,15 @@ function out = cellposeROIset(dataPath,animal,tifList,tifFiles,opts)
 %                     defaults here set diameter 15 and cellprob -1, which is
 %                     what the TO0003 calibration settled on; cpsam's
 %                     automatic sizing fails outright on a smoothed mean.
+%     'autoDiameter'  pick --diameter per condition instead of taking it from
+%                     cellposeArgs. Detection falls off a cliff either side of
+%                     the right value rather than degrading gently -- on
+%                     TO0002's BPN root, diameter 10 finds 47 cells and 12, 15,
+%                     18, 20 and 25 all find 0 or 1 -- so one cohort-wide
+%                     number silently loses whole animals. Costs one extra
+%                     Cellpose call per ladder entry, on one tif. Default false.
+%     'diameterLadder' diameters tried by autoDiameter.
+%                     Default [10 12 15 18 20 25].
 %     'saveMeanTif'   write NoRMCorred/<animal>_cellposeMean.tif for QC.
 %                     Default true.
 %     'saveROIimage'  write <animal>_ROIoverlay_<cond>.png per condition -- the
@@ -91,6 +100,8 @@ arguments
     opts.maxShiftPx   (1,1) double {mustBeNonnegative} = 15
     opts.refCond      (1,:) char = ''
     opts.cellposeArgs       cell = {'diameter',15,'cellprobThreshold',-1}
+    opts.autoDiameter (1,1) logical = false
+    opts.diameterLadder     double = [10 12 15 18 20 25]
     opts.saveMeanTif  (1,1) logical = true
     opts.saveROIimage (1,1) logical = true
     opts.verbose      (1,1) logical = true
@@ -181,6 +192,12 @@ switch opts.mode
     case 'consensus'
         %every tif, shifted into the reference frame first so one vote map
         %serves all conditions
+        cpArgsBase = opts.cellposeArgs;
+        if opts.autoDiameter
+            probe = tifMeans{refIdx}{max(1,round(numel(tifMeans{refIdx})/2))};
+            cpArgsBase = pickDiameter(probe,animal,cpArgsBase, ...
+                opts.diameterLadder,opts.verbose);
+        end
         roiSets = {};
         nSeg = 0;
         tSeg = tic;
@@ -193,7 +210,7 @@ switch opts.mode
                 end
                 img = fillNaN(img);
                 cpArgs = buildCPargs(animal,sprintf('%s_t%03d',conds{c},k),...
-                    tifList,conds{c},opts);
+                    tifList,conds{c},opts,cpArgsBase);
                 [L,P] = cellposeSegment(img,cpArgs{:});
                 nSeg = nSeg + 1;
                 if nSeg == 1, cellposeParams = P; end
@@ -361,8 +378,9 @@ t = fullfile(dataPath,'NoRMCorred',...
     strrep(tifList.(cond)(1).name,'.tif','_NoRMCorre.tif'));
 end
 % ------------------------------------------------------------------------
-function args = buildCPargs(animal,tag,tifList,cond,opts)
-args = [{'name',sprintf('%s_%s',animal,tag)},opts.cellposeArgs];
+function args = buildCPargs(animal,tag,tifList,cond,opts,cpArgs)
+if nargin < 6; cpArgs = opts.cellposeArgs; end
+args = [{'name',sprintf('%s_%s',animal,tag)},cpArgs];
 if ~any(strcmp(args(1:2:end),'srcTif'))
     src = fullfile(tifList.(cond)(1).folder,tifList.(cond)(1).name);
     if isfile(src)
@@ -370,6 +388,55 @@ if ~any(strcmp(args(1:2:end),'srcTif'))
     end
 end
 end
+% ------------------------------------------------------------------------
+function cpArgs = pickDiameter(probeImg,animal,cpArgs,ladder,verbose)
+%Cellpose-SAM's detection here is sharply tuned to --diameter: the wrong
+%value returns nothing at all rather than a worse answer, so a cohort-wide
+%default silently drops animals whose cells sit at a different pixel scale.
+%Try the ladder on one representative projection and keep the diameter that
+%finds the most cells, preferring the larger of near-ties because a too-small
+%diameter fragments cells rather than missing them.
+n = zeros(size(ladder));
+for k = 1:numel(ladder)
+    args = replaceArg(cpArgs,'diameter',ladder(k));
+    try
+        [~,P] = cellposeSegment(probeImg, ...
+            'name',sprintf('%s_diamProbe%g',animal,ladder(k)),args{:});
+        n(k) = P.nLabels;
+    catch
+        n(k) = 0;
+    end
+end
+if ~any(n)
+    warning('cellposeROIset:noDiameterWorks', ...
+        ['No diameter in %s found any cell on the probe image; keeping %g. ' ...
+         'This projection may simply be too low-contrast to segment.'], ...
+        mat2str(ladder),getArg(cpArgs,'diameter'));
+    return
+end
+best = ladder(n >= 0.9*max(n));
+chosen = max(best);
+cpArgs = replaceArg(cpArgs,'diameter',chosen);
+if verbose
+    fprintf('cellposeROIset: auto diameter %g (labels %s for %s)\n', ...
+        chosen,mat2str(n),mat2str(ladder));
+end
+end
+% ------------------------------------------------------------------------
+function a = replaceArg(a,name,val)
+i = find(strcmp(a(1:2:end),name),1);
+if isempty(i)
+    a = [a,{name,val}];
+else
+    a{2*i} = val;
+end
+end
+% ------------------------------------------------------------------------
+function v = getArg(a,name)
+i = find(strcmp(a(1:2:end),name),1);
+if isempty(i); v = NaN; else; v = a{2*i}; end
+end
+
 % ------------------------------------------------------------------------
 function L = roiSetToLabel(roi,sz)
 L = zeros(sz);
