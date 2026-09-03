@@ -23,7 +23,7 @@ function fixed = ensureROIfileMeta(dataPath,animal,tifList,tifFiles)
 %   Output
 %     fixed     cellstr of the conditions whose files were rewritten.
 %
-%   See also intersectROIfiles, cellposeROIset, processAnimal2Pheadless
+%   See also intersectROIfiles, remapROIfile, TIFcatROIgui
 
 fixed = {};
 conds = fieldnames(tifList);
