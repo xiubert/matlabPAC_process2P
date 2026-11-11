@@ -432,6 +432,8 @@ else
 end
 fprintf(['\n--- FISSA (run outside MATLAB, then continue at section 9) ---\n' ...
          '%s\n\n'],fissaShellCmd);
+     
+%  python "C:\Users\JIC402\Documents\MATLAB\matlabPAC_process2P\FISSAviaMatlab_prePostTreatment.py" "C:\Users\JIC402\OneDrive - University of Pittsburgh\Data\TO0027\BPN" --roi-dir "C:\Users\JIC402\OneDrive - University of Pittsburgh\Data\TO0027\BPN\analysis\manualROI_20261103" --tiff-folder "C:\Users\JIC402\OneDrive - University of Pittsburgh\Data\TO0027\BPN\NoRMCorred" --out-dir "C:\Users\JIC402\OneDrive - University of Pittsburgh\Data\TO0027\BPN\analysis\manualROI_20261103\FISSAoutput"
 
 %% 9. Parse FISSA output: separate map vs. stim trials, apply neuropil scaling
 

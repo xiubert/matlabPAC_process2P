@@ -25,10 +25,15 @@ function infoFile = writeRunInfo(P,info)
 %
 %   See also animalPaths, listRuns, processAnimal2Pheadless
 
-arguments
-    P    (1,1) struct
-    info (1,1) struct = struct()
+% arguments
+%     P    (1,1) struct
+%     info (1,1) struct = struct()
+% end
+if nargin < 2
+        info = struct();
 end
+validateattributes(P, {'struct'}, {'scalar'}, mfilename, 'P', 1);
+validateattributes(info, {'struct'}, {'scalar'}, mfilename, 'info', 2);
 
 infoFile = '';
 if P.isFlat
@@ -75,7 +80,7 @@ if fid < 0
     infoFile = '';
     return
 end
-fprintf(fid,'%s',jsonencode(rec,'PrettyPrint',true));
+fprintf(fid,'%s',jsonencode(rec));
 fclose(fid);
 
 appendAnimalLog(P,rec);

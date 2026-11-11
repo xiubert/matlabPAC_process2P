@@ -1,4 +1,4 @@
-function P = animalPaths(dataPath,opts)
+function P = animalPaths(dataPath,varargin)
 % animalPaths  Resolve where an animal's inputs and artifacts live.
 %
 %   P = animalPaths(dataPath)                     % flat layout
@@ -52,11 +52,19 @@ function P = animalPaths(dataPath,opts)
 %
 %   See also processAnimal2Pheadless, migrateAnimalArtifacts, headlessConfig
 
-arguments
-    dataPath        (1,:) char
-    opts.run        (1,:) char = ''
-    opts.create     (1,1) logical = false
-end
+% arguments
+%     dataPath        (1,:) char
+%     opts.run        (1,:) char = ''
+%     opts.create     (1,1) logical = false
+% end
+p = inputParser;
+addRequired(p, 'dataPath', @(x) validateattributes(x, {'char', 'string'}, {'row', 'vector'}));
+addParameter(p, 'run', '', @(x) validateattributes(x, {'char', 'string'}, {'row', 'vector'}));
+addParameter(p, 'create', false, @(x) validateattributes(x, {'logical', 'numeric'}, {'scalar'}));
+parse(p, dataPath, varargin{:});
+dataPath = char(p.Results.dataPath);
+run = char(p.Results.run);
+create = logical(p.Results.create);
 
 if ~isfolder(dataPath)
     error('animalPaths:noDataPath','Not a folder: %s',dataPath);
@@ -65,12 +73,12 @@ end
 animal = regexp(dataPath,'[A-Z]{2}\d{4}','match','once');
 
 P.root      = dataPath;
-P.run       = opts.run;
+P.run       = run;
 P.moCorrDir = fullfile(dataPath,'NoRMCorred');
 
-if ~isempty(opts.run)
-    validateRunName(opts.run);
-    P.artifacts = fullfile(dataPath,'analysis',opts.run);
+if ~isempty(run)
+    validateRunName(run);
+    P.artifacts = fullfile(dataPath,'analysis',run);
 else
     P.artifacts = dataPath;
 end
@@ -98,7 +106,7 @@ P.ncParams  = fullfile(P.moCorrDir,[animal '_NoRMCorreParams.mat']);
 P.moCorrTifs  = fullfile(P.artifacts,[animal '_moCorr_Tifs_Params.mat']);
 P.tifFileList = fullfile(P.artifacts,[animal '_tifFileList.mat']);
 
-if opts.create
+if create
     for f = {P.artifacts,P.fissaDir}
         if ~isfolder(f{1}); mkdir(f{1}); end
     end
