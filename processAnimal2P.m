@@ -421,8 +421,9 @@ end
 %   --tiff-folder always points at NoRMCorred/, while --roi-dir and --out-dir
 %   belong to THIS run.
 
-fissaScript = fullfile(fileparts(mfilename('fullpath')), ...
-    'FISSAviaMatlab_prePostTreatment.py');
+% fissaScript = fullfile(fileparts(mfilename('fullpath')), ...
+%     'FISSAviaMatlab_prePostTreatment.py');
+fissaScript = 'C:\Users\JIC402\Documents\MATLAB\matlabPAC_process2P\FISSAviaMatlab_prePostTreatment.py';
 if P.isFlat
     fissaShellCmd = sprintf('python "%s" "%s"',fissaScript,dataPath);
 else

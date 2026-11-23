@@ -46,12 +46,19 @@ stimParams.totalPulses = params.totalPulses;
 
 for i = 1:nPulse
     tmp(i).Pulse = pulse(i).pulsename;
-    tmp(i).BPNsOnset = str2double(string(regexp(tmp(i).Pulse,'(?<=_)\d+(\.\d+)?(?=sOnset)','match')));
+    if ~contains(tmp(i).Pulse, 'spont')
+        tmp(i).BPNsOnset = str2double(string(regexp(tmp(i).Pulse,'(?<=_)\d+(\.\d+)?(?=sOnset)','match')));
 
-    tmp(i).BPNdBAmpl = str2double(string(regexp(tmp(i).Pulse,'(?<=_)\d+(?=dB)','match')));
-    tmp(i).BPNmsPulseLen = str2double(string(regexp(tmp(i).Pulse,'(?<=_)\d+(?=msPulse)','match')));
-    tmp(i).BPNmsStimLen = str2double(string(regexp(tmp(i).Pulse,'(?<=_)\d+(?=msTotal)','match')));
-    tmp(i).BPNkHzFreqCutoff = regexp(tmp(i).Pulse,'(?<=BPN_)\d+-\d+(?=kHz)','match');
+        tmp(i).BPNdBAmpl = str2double(string(regexp(tmp(i).Pulse,'(?<=_)\d+(?=dB)','match')));
+        tmp(i).BPNmsPulseLen = str2double(string(regexp(tmp(i).Pulse,'(?<=_)\d+(?=msPulse)','match')));
+        tmp(i).BPNmsStimLen = str2double(string(regexp(tmp(i).Pulse,'(?<=_)\d+(?=msTotal)','match')));
+        tmp(i).BPNkHzFreqCutoff = regexp(tmp(i).Pulse,'(?<=BPN_)\d+-\d+(?=kHz)','match');
+    else
+        tmp(i).BPNdBAmpl = 0;
+        tmp(i).BPNsOnset = 1;
+        tmp(i).BPNmsPulseLen = 400;
+        tmp(i).BPNmsStimLen = 3000;
+        tmp(i).BPNkHzFreqCutoff = '6-64';
 end
 % convert 1-by-N structure array into a single struct where each field contains a column cell array
 fn = fieldnames(tmp);

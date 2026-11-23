@@ -42,10 +42,15 @@ function mergedTable = combineDiffOnset(anmlROIbyStim, baselineSec)
 %     with lowercase 'sonset' should be migrated via
 %     migrateBPNStimTableFields first.
 
-arguments
-    anmlROIbyStim table
-    baselineSec   (1,1) double {mustBePositive} = 1
+% arguments
+%     anmlROIbyStim table
+%     baselineSec   (1,1) double {mustBePositive} = 1
+% end
+if nargin < 2 || isempty(baselineSec)
+        baselineSec = 1;
 end
+validateattributes(anmlROIbyStim, {'table'}, {'nonempty'}, mfilename, 'anmlROIbyStim', 1);
+validateattributes(baselineSec, {'double'}, {'scalar', 'positive'}, mfilename, 'baselineSec', 2);
 
 allVars = anmlROIbyStim.Properties.VariableNames;
 isCell  = varfun(@iscell, anmlROIbyStim, 'OutputFormat', 'uniform');

@@ -1,4 +1,4 @@
-function [pulseLegend2P,stimGroupIDX,outputTables] = stimParam2ROI(dataPath,opts)
+function [pulseLegend2P,stimGroupIDX,outputTables] = stimParam2ROI(dataPath, varargin)
 % stimParam2ROI  Organize one animal's 2P traces by ROI x stim parameters.
 %
 %   [pulseLegend2P,stimGroupIDX,outputTables] = stimParam2ROI(dataPath)
@@ -80,14 +80,23 @@ function [pulseLegend2P,stimGroupIDX,outputTables] = stimParam2ROI(dataPath,opts
 %       captured error trace is preserved in-source above the spont
 %       block as a regression hint.
 
-arguments
-    dataPath (1,:) char
-    opts.excludeNeg (1,1) logical = true   % movement/dropout screening in
-                                           % anmlROIbyStimTable; see its header
-    opts.artifactDir (1,:) char = ''       % where ROI files, tifFileList and
-                                           % the output tables live; '' =
-                                           % dataPath. See animalPaths.
-end
+% arguments
+%     dataPath (1,:) char
+%     opts.excludeNeg (1,1) logical = true   % movement/dropout screening in
+%                                            % anmlROIbyStimTable; see its header
+%     opts.artifactDir (1,:) char = ''       % where ROI files, tifFileList and
+%                                            % the output tables live; '' =
+%                                            % dataPath. See animalPaths.
+% end
+
+p = inputParser;
+addRequired(p, 'dataPath', @(x) ischar(x) || isstring(x));
+addParameter(p, 'excludeNeg', true, @islogical);
+addParameter(p, 'artifactDir', '', @(x) ischar(x) || isstring(x));
+parse(p, dataPath, varargin{:});
+dataPath = char(p.Results.dataPath);
+opts.excludeNeg = p.Results.excludeNeg;
+opts.artifactDir = char(p.Results.artifactDir);
 
 % The pulse files are RAW and always sit beside the tifs; everything this
 % function reads or writes besides them belongs to one analysis run.
@@ -140,8 +149,12 @@ save(fullfile(artifactDir,[animal '_pulseLegend2P.mat']),'pulseLegend2P','-v7.3'
 stimGroupIDX.ptStimIDX.pulseLegend2P = contains({pulseLegend2P.pulseSet},'PTinContrast')';
 stimGroupIDX.ptStimIDX.tifFileList = ismember({tifFileList.stim.name},...
     {pulseLegend2P(stimGroupIDX.ptStimIDX.pulseLegend2P).tif})';
+% for BPN in contrast
+stimGroupIDX.BPNCGCStimIDX.pulseLegend2P = contains({pulseLegend2P.pulseSet},'BPNinContrast')';
+stimGroupIDX.BPNCGCStimIDX.tifFileList = ismember({tifFileList.stim.name},...
+    {pulseLegend2P(stimGroupIDX.BPNCGCStimIDX.pulseLegend2P).tif})';
 % for BPN
-stimGroupIDX.BPNStimIDX.pulseLegend2P = contains({pulseLegend2P.pulseSet},'BPN')';
+stimGroupIDX.BPNStimIDX.pulseLegend2P = contains({pulseLegend2P.pulseSet},'BPN_')';
 stimGroupIDX.BPNStimIDX.tifFileList = ismember({tifFileList.stim.name},...
     {pulseLegend2P(stimGroupIDX.BPNStimIDX.pulseLegend2P).tif})';
 % for spont

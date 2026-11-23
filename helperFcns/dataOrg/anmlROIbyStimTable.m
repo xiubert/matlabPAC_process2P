@@ -149,13 +149,17 @@ function [anmlROIbyStim,stimTable] = anmlROIbyStimTable(animal,tifFileListStim,m
 %       post/pre flip disagrees ('something went wrong here'); that
 %       indicates a unique/sortrows mismatch on the 'treatment' column.
 
-arguments
-    animal
-    tifFileListStim
-    moCorROI
-    tifStimParamTable
-    excludeNeg (1,1) logical = true
+% arguments
+%     animal
+%     tifFileListStim
+%     moCorROI
+%     tifStimParamTable
+%     excludeNeg (1,1) logical = true
+% end
+if nargin < 5 || isempty(excludeNeg)
+        excludeNeg = true;
 end
+validateattributes(excludeNeg, {'logical'}, {'scalar'}, mfilename, 'excludeNeg', 5);
 
 % Trim the trace fields to a common FRAME count, so the single-pulse branch
 % below can stack one row per tif into a single matrix per stim.
